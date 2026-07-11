@@ -47,6 +47,71 @@ const lu::assets::NifTextKeyExtraData* findTextKeys(
     return nullptr;
 }
 
+template <typename T>
+const T* findByBlock(const std::vector<T>& values, int32_t block_ref) {
+    if (block_ref < 0) return nullptr;
+    for (const auto& value : values) {
+        if (static_cast<int32_t>(value.block_index) == block_ref) return &value;
+    }
+    return nullptr;
+}
+
+AnimationTransformTrack transformTrackFromInterpolator(
+    const lu::assets::NifFile& kf,
+    int32_t interpolator_ref) {
+
+    AnimationTransformTrack track;
+    const auto* interpolator = findByBlock(kf.transform_interpolators, interpolator_ref);
+    if (!interpolator) return track;
+
+    track.present = true;
+    track.default_transform.translation = {
+        interpolator->translation.x,
+        interpolator->translation.y,
+        interpolator->translation.z
+    };
+    // KF quaternion vectors are conjugated relative to the active convention
+    // produced by the NIF matrix-to-quaternion scene extraction.
+    track.default_transform.rotation = {
+        -interpolator->rotation.x,
+        -interpolator->rotation.y,
+        -interpolator->rotation.z,
+        interpolator->rotation.w
+    };
+    track.default_transform.scale = interpolator->scale;
+
+    const auto* data = findByBlock(kf.transform_data, interpolator->data_ref);
+    if (!data) return track;
+    track.rotation_key_type = data->rotation_key_type;
+    track.translation_key_type = data->translation_key_type;
+    track.scale_key_type = data->scale_key_type;
+    track.rotation_keys.reserve(data->rotation_keys.size());
+    for (const auto& key : data->rotation_keys) {
+        track.rotation_keys.push_back({
+            key.time,
+            {-key.value.x, -key.value.y, -key.value.z, key.value.w}
+        });
+    }
+    auto copy_float_keys = [](const auto& source, auto& destination) {
+        destination.reserve(source.size());
+        for (const auto& key : source) destination.push_back({key.time, key.value});
+    };
+    copy_float_keys(data->euler_x_keys, track.euler_x_keys);
+    copy_float_keys(data->euler_y_keys, track.euler_y_keys);
+    copy_float_keys(data->euler_z_keys, track.euler_z_keys);
+    copy_float_keys(data->scale_keys, track.scale_keys);
+    track.translation_keys.reserve(data->translation_keys.size());
+    for (const auto& key : data->translation_keys) {
+        track.translation_keys.push_back({
+            key.time,
+            {key.value.x, key.value.y, key.value.z},
+            {key.forward_tangent.x, key.forward_tangent.y, key.forward_tangent.z},
+            {key.backward_tangent.x, key.backward_tangent.y, key.backward_tangent.z}
+        });
+    }
+    return track;
+}
+
 AnimationClip clipFromSequence(
     const lu::assets::NifFile& kf,
     const lu::assets::NifControllerSequence& sequence,
@@ -75,6 +140,7 @@ AnimationClip clipFromSequence(
         out.interpolator_ref = block.interpolator_ref;
         out.controller_ref = block.controller_ref;
         out.priority = block.priority;
+        out.transform_track = transformTrackFromInterpolator(kf, block.interpolator_ref);
         clip.controlled_blocks.push_back(std::move(out));
     }
 

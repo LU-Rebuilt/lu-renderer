@@ -13,6 +13,7 @@
 #endif
 
 #include "lu/renderer/camera.h"
+#include "lu/renderer/animation.h"
 #include "lu/renderer/lu_import/animation_importer.h"
 #include "lu/renderer/lu_import/lvl_environment_importer.h"
 #include "lu/renderer/lu_import/nif_importer.h"
@@ -43,6 +44,7 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using lu::renderer::MeshAsset;
@@ -72,11 +74,15 @@ struct Args {
     RenderFeatureSettings features;
     std::optional<float> camera_distance;
     std::optional<Vec3> camera_target;
+    size_t animation_clip_index = 0;
+    float animation_time = 0.0f;
+    float animation_speed = 1.0f;
     uint32_t exit_after_frames = 0;
     bool hidden = false;
     bool transparent_test_scene = false;
     bool shadow_test_scene = false;
     bool bgfx_device_debug = false;
+    bool animation_paused = false;
 };
 
 struct InputState {
@@ -102,9 +108,15 @@ struct AppState {
     bool lvl_import_requested = false;
     bool animation_import_requested = false;
     bool manual_environment_override = false;
+    size_t animation_clip_index = 0;
+    float animation_playback_seconds = 0.0f;
+    float animation_speed = 1.0f;
+    bool animation_playing = true;
+    bool animation_pose_dirty = true;
 #if defined(_WIN32)
     WNDPROC original_wnd_proc = nullptr;
     HMENU view_menu = nullptr;
+    HMENU animation_menu = nullptr;
     HWND lighting_window = nullptr;
 #endif
 };
@@ -127,6 +139,14 @@ Args parseArgs(int argc, char** argv) {
             args.nif_path = argv[++i];
         } else if (arg == "--screenshot" && i + 1 < argc) {
             args.screenshot_path = argv[++i];
+        } else if (arg == "--animation-clip" && i + 1 < argc) {
+            args.animation_clip_index = static_cast<size_t>(std::strtoull(argv[++i], nullptr, 10));
+        } else if (arg == "--animation-time" && i + 1 < argc) {
+            args.animation_time = std::max(0.0f, std::strtof(argv[++i], nullptr));
+        } else if (arg == "--animation-speed" && i + 1 < argc) {
+            args.animation_speed = std::max(0.01f, std::strtof(argv[++i], nullptr));
+        } else if (arg == "--animation-paused" || arg == "--paused") {
+            args.animation_paused = true;
         } else if (arg == "--msaa" && i + 1 < argc) {
             args.features.msaa.enabled = true;
             args.features.msaa.samples = static_cast<uint8_t>(std::clamp(std::strtoul(argv[++i], nullptr, 10), 1ul, 16ul));
@@ -795,6 +815,17 @@ void printAnimationDiagnostics(const RenderWorld& world) {
     const size_t count = std::min<size_t>(animation.clips.size(), 8);
     for (size_t i = 0; i < count; ++i) {
         const auto& clip = animation.clips[i];
+        size_t transform_tracks = 0;
+        size_t transform_keys = 0;
+        for (const auto& block : clip.controlled_blocks) {
+            const auto& track = block.transform_track;
+            if (!track.present) continue;
+            ++transform_tracks;
+            transform_keys += track.rotation_keys.size() +
+                track.euler_x_keys.size() + track.euler_y_keys.size() +
+                track.euler_z_keys.size() + track.translation_keys.size() +
+                track.scale_keys.size();
+        }
         std::cout
             << "  [" << i << "] "
             << "seqId=" << clip.sequence_id
@@ -805,6 +836,8 @@ void printAnimationDiagnostics(const RenderWorld& world) {
             << " freq=" << clip.frequency
             << " cycle=" << clip.cycle_type
             << " controlled=" << clip.controlled_blocks.size()
+            << " transformTracks=" << transform_tracks
+            << " transformKeys=" << transform_keys
             << " textKeys=" << clip.text_keys.size();
         if (!clip.controlled_blocks.empty()) {
             std::cout << " firstTarget=\"" << clip.controlled_blocks.front().node_name << "\"";
@@ -1084,7 +1117,27 @@ bool loadAnimation(const std::filesystem::path& animation_path, Args& args, Rend
         return false;
     }
 
-    world.animation = std::move(imported.animation);
+    AnimationAsset animation = std::move(imported.animation);
+    if (!animation.model_path.empty()) {
+        std::string normalized_model = animation.model_path;
+        std::replace(normalized_model.begin(), normalized_model.end(), '\\', '/');
+        const std::filesystem::path model_path =
+            (animation_path.parent_path() / std::filesystem::path(normalized_model)).lexically_normal();
+        std::error_code ec;
+        if (std::filesystem::exists(model_path, ec)) {
+            std::error_code equivalent_error;
+            const bool same_model = !args.nif_path.empty() &&
+                std::filesystem::equivalent(model_path, args.nif_path, equivalent_error) &&
+                !equivalent_error;
+            if (!same_model || world.meshes.empty()) {
+                if (!loadNifWorld(model_path, args, world)) return false;
+                std::cout << "Loaded animation model " << model_path << "\n";
+            }
+        } else {
+            std::cerr << "Animation model not found: " << model_path << "\n";
+        }
+    }
+    world.animation = std::move(animation);
     args.animation_path = animation_path;
     printAnimationDiagnostics(world);
     return true;
@@ -1099,6 +1152,140 @@ void setViewerTitle(GLFWwindow* window, const std::filesystem::path& nif_path) {
     glfwSetWindowTitle(window, title.c_str());
 }
 
+std::optional<std::pair<Vec3, Vec3>> printAnimationPoseDiagnostics(
+    const RenderWorld& world,
+    const lu::renderer::AnimationPose& pose) {
+
+    std::unordered_map<uint32_t, size_t> node_by_block;
+    for (size_t i = 0; i < world.skeleton_nodes.size(); ++i) {
+        node_by_block[world.skeleton_nodes[i].block_index] = i;
+    }
+    Vec3 overall_minimum{
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max()};
+    Vec3 overall_maximum{-overall_minimum.x, -overall_minimum.y, -overall_minimum.z};
+    bool has_bounds = false;
+    for (const auto& mesh : world.meshes) {
+        if (mesh.vertices.empty()) continue;
+        std::array<lu::renderer::Mat4, 64> palette;
+        palette.fill(lu::renderer::identity());
+        lu::renderer::Mat4 rigid_transform = lu::renderer::identity();
+        if (mesh.is_skinned) {
+            const size_t bone_count = std::min(mesh.skin_bone_node_blocks.size(), palette.size());
+            for (size_t bone = 0; bone < bone_count; ++bone) {
+                const int32_t block = mesh.skin_bone_node_blocks[bone];
+                auto node = block >= 0
+                    ? node_by_block.find(static_cast<uint32_t>(block))
+                    : node_by_block.end();
+                if (node == node_by_block.end() || node->second >= pose.node_world_matrices.size()) continue;
+                const auto& bind = world.skeleton_nodes[node->second].bind_world;
+                palette[bone] = pose.node_world_matrices[node->second] *
+                    lu::renderer::inverse_transform_matrix(bind.translation, bind.rotation, bind.scale);
+            }
+        } else {
+            auto node = node_by_block.find(mesh.source_node_block);
+            if (node != node_by_block.end() && node->second < pose.node_world_matrices.size()) {
+                const auto& bind = world.skeleton_nodes[node->second].bind_world;
+                rigid_transform = pose.node_world_matrices[node->second] *
+                    lu::renderer::inverse_transform_matrix(bind.translation, bind.rotation, bind.scale);
+            }
+        }
+        Vec3 minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+        Vec3 maximum{-minimum.x, -minimum.y, -minimum.z};
+        for (const auto& vertex : mesh.vertices) {
+            Vec3 position = lu::renderer::transform_point(rigid_transform, vertex.position);
+            if (mesh.is_skinned) {
+                position = {};
+                float weight_sum = 0.0f;
+                for (size_t influence = 0; influence < vertex.bone_weights.size(); ++influence) {
+                    const float weight = vertex.bone_weights[influence];
+                    if (weight <= 0.0f || vertex.bone_indices[influence] >= palette.size()) continue;
+                    position = position + lu::renderer::transform_point(
+                        palette[vertex.bone_indices[influence]], vertex.position) * weight;
+                    weight_sum += weight;
+                }
+                if (weight_sum <= 0.00001f) position = vertex.position;
+            }
+            minimum.x = std::min(minimum.x, position.x);
+            minimum.y = std::min(minimum.y, position.y);
+            minimum.z = std::min(minimum.z, position.z);
+            maximum.x = std::max(maximum.x, position.x);
+            maximum.y = std::max(maximum.y, position.y);
+            maximum.z = std::max(maximum.z, position.z);
+        }
+        std::cout << "Animation pose: clip=" << pose.clip_index
+                  << " time=" << pose.sample_time
+                  << " mesh=\"" << mesh.name << "\" bounds="
+                  << minimum.x << "/" << minimum.y << "/" << minimum.z << ".."
+                  << maximum.x << "/" << maximum.y << "/" << maximum.z << "\n";
+        overall_minimum.x = std::min(overall_minimum.x, minimum.x);
+        overall_minimum.y = std::min(overall_minimum.y, minimum.y);
+        overall_minimum.z = std::min(overall_minimum.z, minimum.z);
+        overall_maximum.x = std::max(overall_maximum.x, maximum.x);
+        overall_maximum.y = std::max(overall_maximum.y, maximum.y);
+        overall_maximum.z = std::max(overall_maximum.z, maximum.z);
+        has_bounds = true;
+    }
+    if (has_bounds) return std::pair{overall_minimum, overall_maximum};
+    return std::nullopt;
+}
+
+void selectAnimationClip(AppState& app, int direction) {
+    if (!app.world || app.world->animation.clips.empty()) return;
+    const size_t count = app.world->animation.clips.size();
+    if (direction < 0) {
+        app.animation_clip_index = (app.animation_clip_index + count - 1) % count;
+    } else if (direction > 0) {
+        app.animation_clip_index = (app.animation_clip_index + 1) % count;
+    } else {
+        app.animation_clip_index = std::min(app.animation_clip_index, count - 1);
+    }
+    app.animation_playback_seconds = 0.0f;
+    app.animation_pose_dirty = true;
+}
+
+void restartAnimation(AppState& app) {
+    app.animation_playback_seconds = 0.0f;
+    app.animation_pose_dirty = true;
+}
+
+void stepAnimation(AppState& app, float seconds) {
+    app.animation_playback_seconds = std::max(0.0f, app.animation_playback_seconds + seconds);
+    app.animation_playing = false;
+    app.animation_pose_dirty = true;
+}
+
+void updatePlaybackTitle(GLFWwindow* window, const Args& args, const AppState& app) {
+    if (!app.world || app.world->animation.clips.empty()) {
+        setViewerTitle(window, args.nif_path);
+        return;
+    }
+    const size_t clip_index = std::min(
+        app.animation_clip_index,
+        app.world->animation.clips.size() - 1);
+    const auto& clip = app.world->animation.clips[clip_index];
+    const float sample_time = lu::renderer::animationSampleTime(
+        clip, app.animation_playback_seconds);
+    char time_text[64]{};
+    std::snprintf(
+        time_text,
+        sizeof(time_text),
+        "%.2f / %.2f  %.2fx",
+        sample_time,
+        clip.stop_time,
+        app.animation_speed);
+    std::string title = "LU NIF Viewer - ";
+    title += args.nif_path.filename().string();
+    title += " - ";
+    title += app.animation_playing ? "Playing: " : "Paused: ";
+    title += clip.name.empty() ? ("Clip " + std::to_string(clip_index)) : clip.name;
+    title += "  [";
+    title += time_text;
+    title += "]";
+    glfwSetWindowTitle(window, title.c_str());
+}
+
 #if defined(_WIN32)
 constexpr UINT_PTR kMenuFileImportNif = 1001;
 constexpr UINT_PTR kMenuFileImportLvl = 1002;
@@ -1107,6 +1294,16 @@ constexpr UINT_PTR kMenuViewOrbitCamera = 2001;
 constexpr UINT_PTR kMenuViewFlyCamera = 2002;
 constexpr UINT_PTR kMenuViewResetCamera = 2003;
 constexpr UINT_PTR kMenuViewLightingFog = 2004;
+constexpr UINT_PTR kMenuAnimationPlayPause = 4001;
+constexpr UINT_PTR kMenuAnimationRestart = 4002;
+constexpr UINT_PTR kMenuAnimationPrevious = 4003;
+constexpr UINT_PTR kMenuAnimationNext = 4004;
+constexpr UINT_PTR kMenuAnimationStepBack = 4005;
+constexpr UINT_PTR kMenuAnimationStepForward = 4006;
+constexpr UINT_PTR kMenuAnimationSpeedQuarter = 4010;
+constexpr UINT_PTR kMenuAnimationSpeedHalf = 4011;
+constexpr UINT_PTR kMenuAnimationSpeedNormal = 4012;
+constexpr UINT_PTR kMenuAnimationSpeedDouble = 4013;
 constexpr wchar_t kAppStateProperty[] = L"LuRendererNifViewerAppState";
 
 constexpr int kLightingApply = 3001;
@@ -1814,6 +2011,26 @@ void updateViewMenuChecks(AppState& app) {
         MF_BYCOMMAND);
 }
 
+void updateAnimationMenu(AppState& app) {
+    if (!app.animation_menu) return;
+    ModifyMenuW(
+        app.animation_menu,
+        kMenuAnimationPlayPause,
+        MF_BYCOMMAND | MF_STRING,
+        kMenuAnimationPlayPause,
+        app.animation_playing ? L"Pause\tSpace" : L"Play\tSpace");
+    UINT speed_item = kMenuAnimationSpeedNormal;
+    if (app.animation_speed <= 0.25f) speed_item = kMenuAnimationSpeedQuarter;
+    else if (app.animation_speed <= 0.5f) speed_item = kMenuAnimationSpeedHalf;
+    else if (app.animation_speed >= 2.0f) speed_item = kMenuAnimationSpeedDouble;
+    CheckMenuRadioItem(
+        app.animation_menu,
+        kMenuAnimationSpeedQuarter,
+        kMenuAnimationSpeedDouble,
+        speed_item,
+        MF_BYCOMMAND);
+}
+
 LRESULT CALLBACK viewerWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     auto* app = static_cast<AppState*>(GetPropW(hwnd, kAppStateProperty));
     if (message == WM_COMMAND) {
@@ -1843,6 +2060,47 @@ LRESULT CALLBACK viewerWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
                     app->pending_animation_import = selected;
                     app->animation_import_requested = true;
                 }
+            }
+            return 0;
+        case kMenuAnimationPlayPause:
+            if (app) {
+                app->animation_playing = !app->animation_playing;
+                updateAnimationMenu(*app);
+            }
+            return 0;
+        case kMenuAnimationRestart:
+            if (app) restartAnimation(*app);
+            return 0;
+        case kMenuAnimationPrevious:
+            if (app) selectAnimationClip(*app, -1);
+            return 0;
+        case kMenuAnimationNext:
+            if (app) selectAnimationClip(*app, 1);
+            return 0;
+        case kMenuAnimationStepBack:
+            if (app) {
+                stepAnimation(*app, -1.0f / 30.0f);
+                updateAnimationMenu(*app);
+            }
+            return 0;
+        case kMenuAnimationStepForward:
+            if (app) {
+                stepAnimation(*app, 1.0f / 30.0f);
+                updateAnimationMenu(*app);
+            }
+            return 0;
+        case kMenuAnimationSpeedQuarter:
+        case kMenuAnimationSpeedHalf:
+        case kMenuAnimationSpeedNormal:
+        case kMenuAnimationSpeedDouble:
+            if (app) {
+                switch (LOWORD(wparam)) {
+                case kMenuAnimationSpeedQuarter: app->animation_speed = 0.25f; break;
+                case kMenuAnimationSpeedHalf: app->animation_speed = 0.5f; break;
+                case kMenuAnimationSpeedDouble: app->animation_speed = 2.0f; break;
+                default: app->animation_speed = 1.0f; break;
+                }
+                updateAnimationMenu(*app);
             }
             return 0;
         case kMenuViewOrbitCamera:
@@ -1894,8 +2152,23 @@ void installNativeMenu(GLFWwindow* window, AppState& app) {
     AppendMenuW(app.view_menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(app.view_menu, MF_STRING, kMenuViewLightingFog, L"Lighting / Fog...");
     AppendMenuW(menu_bar, MF_POPUP, reinterpret_cast<UINT_PTR>(app.view_menu), L"View");
+    app.animation_menu = CreatePopupMenu();
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationPlayPause, L"Pause\tSpace");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationRestart, L"Restart\tHome");
+    AppendMenuW(app.animation_menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationPrevious, L"Previous Clip\t[");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationNext, L"Next Clip\t]");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationStepBack, L"Step Back 1/30s\t,");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationStepForward, L"Step Forward 1/30s\t.");
+    AppendMenuW(app.animation_menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationSpeedQuarter, L"0.25x");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationSpeedHalf, L"0.5x");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationSpeedNormal, L"1x");
+    AppendMenuW(app.animation_menu, MF_STRING, kMenuAnimationSpeedDouble, L"2x");
+    AppendMenuW(menu_bar, MF_POPUP, reinterpret_cast<UINT_PTR>(app.animation_menu), L"Animation");
     SetMenu(hwnd, menu_bar);
     updateViewMenuChecks(app);
+    updateAnimationMenu(app);
 
     SetPropW(hwnd, kAppStateProperty, &app);
     app.original_wnd_proc = reinterpret_cast<WNDPROC>(
@@ -1915,10 +2188,12 @@ void uninstallNativeMenu(GLFWwindow* window, AppState& app) {
     }
     RemovePropW(hwnd, kAppStateProperty);
     app.view_menu = nullptr;
+    app.animation_menu = nullptr;
 }
 #else
 void installNativeMenu(GLFWwindow*, AppState&) {}
 void uninstallNativeMenu(GLFWwindow*, AppState&) {}
+void updateAnimationMenu(AppState&) {}
 #endif
 
 void* nativeWindow(GLFWwindow* window) {
@@ -1981,6 +2256,37 @@ void scrollCallback(GLFWwindow* window, double, double yoffset) {
         app->input.camera->flyMove({0.0f, 0.0f, amount});
     } else {
         app->input.camera->zoom(static_cast<float>(yoffset));
+    }
+}
+
+void keyCallback(GLFWwindow* window, int key, int, int action, int) {
+    if (action != GLFW_PRESS) return;
+    auto* app = static_cast<AppState*>(glfwGetWindowUserPointer(window));
+    if (!app) return;
+    switch (key) {
+    case GLFW_KEY_SPACE:
+        app->animation_playing = !app->animation_playing;
+        updateAnimationMenu(*app);
+        break;
+    case GLFW_KEY_HOME:
+        restartAnimation(*app);
+        break;
+    case GLFW_KEY_LEFT_BRACKET:
+        selectAnimationClip(*app, -1);
+        break;
+    case GLFW_KEY_RIGHT_BRACKET:
+        selectAnimationClip(*app, 1);
+        break;
+    case GLFW_KEY_COMMA:
+        stepAnimation(*app, -1.0f / 30.0f);
+        updateAnimationMenu(*app);
+        break;
+    case GLFW_KEY_PERIOD:
+        stepAnimation(*app, 1.0f / 30.0f);
+        updateAnimationMenu(*app);
+        break;
+    default:
+        break;
     }
 }
 
@@ -2093,6 +2399,26 @@ int main(int argc, char** argv) {
     app.camera = &camera;
     app.features = features;
     app.input.camera = &camera;
+    app.animation_clip_index = world.animation.clips.empty()
+        ? 0
+        : std::min(args.animation_clip_index, world.animation.clips.size() - 1);
+    app.animation_playback_seconds = args.animation_time;
+    app.animation_speed = args.animation_speed;
+    app.animation_playing = !args.animation_paused;
+    if (!world.animation.clips.empty()) {
+        const auto initial_pose = lu::renderer::evaluateAnimationPose(
+            world, app.animation_clip_index, app.animation_playback_seconds);
+        const auto animated_bounds = printAnimationPoseDiagnostics(world, initial_pose);
+        renderer.setAnimationPose(initial_pose);
+        if (animated_bounds && !args.camera_target && !args.camera_distance) {
+            const Vec3 center = (animated_bounds->first + animated_bounds->second) * 0.5f;
+            const Vec3 extent = animated_bounds->second - animated_bounds->first;
+            const float radius = std::max({extent.x, extent.y, extent.z, 1.0f}) * 0.5f;
+            camera.setTarget(center);
+            camera.setDistance(radius * 3.0f);
+            camera.syncFlyToOrbit();
+        }
+    }
     glfwSetWindowUserPointer(window, &app);
     if (!args.hidden) {
         installNativeMenu(window, app);
@@ -2100,6 +2426,7 @@ int main(int argc, char** argv) {
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetScrollCallback(window, scrollCallback);
+    glfwSetKeyCallback(window, keyCallback);
 
     uint32_t rendered_frames = 0;
     bool screenshot_requested = false;
@@ -2133,6 +2460,8 @@ int main(int argc, char** argv) {
                 world.animation = previous_animation;
                 resetCameraToWorld(world, camera);
                 renderer.loadWorld(world);
+                app.animation_clip_index = 0;
+                restartAnimation(app);
                 setViewerTitle(window, args.nif_path);
                 if (app.lighting_window) populateLightingControls(app.lighting_window, world.environment);
             }
@@ -2150,8 +2479,60 @@ int main(int argc, char** argv) {
         }
         if (app.animation_import_requested) {
             app.animation_import_requested = false;
-            loadAnimation(app.pending_animation_import, args, world);
+            if (loadAnimation(app.pending_animation_import, args, world)) {
+                renderer.loadWorld(world);
+                app.animation_clip_index = 0;
+                restartAnimation(app);
+                const auto imported_pose = lu::renderer::evaluateAnimationPose(world, 0, 0.0f);
+                renderer.setAnimationPose(imported_pose);
+                const auto animated_bounds = printAnimationPoseDiagnostics(world, imported_pose);
+                if (animated_bounds) {
+                    const Vec3 center = (animated_bounds->first + animated_bounds->second) * 0.5f;
+                    const Vec3 extent = animated_bounds->second - animated_bounds->first;
+                    camera.setTarget(center);
+                    camera.setDistance(std::max({extent.x, extent.y, extent.z, 1.0f}) * 1.5f);
+                    camera.syncFlyToOrbit();
+                } else {
+                    resetCameraToWorld(world, camera);
+                }
+                updateAnimationMenu(app);
+            }
             app.pending_animation_import.clear();
+        }
+        if (!world.animation.clips.empty()) {
+            if (app.animation_playing) {
+                app.animation_playback_seconds += std::min(dt, 0.1f) * app.animation_speed;
+                app.animation_pose_dirty = true;
+            }
+            if (app.animation_pose_dirty) {
+                renderer.setAnimationPose(lu::renderer::evaluateAnimationPose(
+                    world,
+                    app.animation_clip_index,
+                    app.animation_playback_seconds));
+                app.animation_pose_dirty = false;
+            }
+            const size_t clip_index = std::min(
+                app.animation_clip_index,
+                world.animation.clips.size() - 1);
+            const auto& clip = world.animation.clips[clip_index];
+            const float sample_time = lu::renderer::animationSampleTime(
+                clip, app.animation_playback_seconds);
+            char animation_status[512]{};
+            std::snprintf(
+                animation_status,
+                sizeof(animation_status),
+                "Animation: %s %zu/%zu %s  %.2f/%.2f  %.2fx | Space play/pause, [ ] clips, Home restart, , . step",
+                app.animation_playing ? "PLAY" : "PAUSE",
+                clip_index + 1,
+                world.animation.clips.size(),
+                clip.name.c_str(),
+                sample_time,
+                clip.stop_time,
+                app.animation_speed);
+            renderer.setAnimationDebugText(animation_status);
+            updatePlaybackTitle(window, args, app);
+        } else {
+            renderer.setAnimationDebugText({});
         }
         renderer.render(camera);
         ++rendered_frames;

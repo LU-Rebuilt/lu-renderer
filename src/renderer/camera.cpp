@@ -68,7 +68,7 @@ Vec3 OrbitCamera::target() const {
 
 Vec3 OrbitCamera::forward() const {
     float cp = std::cos(pitch_);
-    return normalize({
+    return normalize(Vec3{
         -std::sin(yaw_) * cp,
         -std::sin(pitch_),
         -std::cos(yaw_) * cp

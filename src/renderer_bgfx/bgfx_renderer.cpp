@@ -1058,6 +1058,7 @@ void BgfxRenderer::clearWorld() {
         destroyMesh(mesh);
     }
     meshes_.clear();
+    skeleton_index_by_block_.clear();
     temporal_history_valid_ = false;
 }
 
@@ -1065,6 +1066,9 @@ void BgfxRenderer::loadWorld(const RenderWorld& world) {
     clearWorld();
     environment_ = world.environment;
     source_asset_path_ = world.source_asset_path;
+    for (size_t i = 0; i < world.skeleton_nodes.size(); ++i) {
+        skeleton_index_by_block_[world.skeleton_nodes[i].block_index] = i;
+    }
     meshes_.reserve(world.meshes.size());
 
     for (const auto& mesh : world.meshes) {
@@ -1092,6 +1096,33 @@ void BgfxRenderer::loadWorld(const RenderWorld& world) {
         GpuMesh gpu;
         gpu.name = mesh.name;
         gpu.material = mesh.material;
+        gpu.is_skinned = mesh.is_skinned;
+        gpu.source_node_block = mesh.source_node_block;
+        auto mesh_node = skeleton_index_by_block_.find(mesh.source_node_block);
+        if (mesh_node != skeleton_index_by_block_.end()) {
+            const NodeTransform& bind = world.skeleton_nodes[mesh_node->second].bind_world;
+            gpu.node_inverse_bind = inverse_transform_matrix(
+                bind.translation, bind.rotation, bind.scale);
+        }
+        gpu.material.lu_shader_requires_skinning =
+            gpu.material.lu_shader_requires_skinning || mesh.is_skinned;
+        gpu.skin_bone_node_blocks.fill(-1);
+        for (size_t bone = 0; bone < gpu.skin_palette.size(); ++bone) {
+            gpu.skin_inverse_bind[bone] = identity();
+            gpu.skin_palette[bone] = identity();
+        }
+        const size_t bone_count = std::min(mesh.skin_bone_node_blocks.size(), gpu.skin_palette.size());
+        for (size_t bone = 0; bone < bone_count; ++bone) {
+            const int32_t block = mesh.skin_bone_node_blocks[bone];
+            gpu.skin_bone_node_blocks[bone] = block;
+            auto node_index = block >= 0
+                ? skeleton_index_by_block_.find(static_cast<uint32_t>(block))
+                : skeleton_index_by_block_.end();
+            if (node_index == skeleton_index_by_block_.end()) continue;
+            const NodeTransform& bind = world.skeleton_nodes[node_index->second].bind_world;
+            gpu.skin_inverse_bind[bone] = inverse_transform_matrix(
+                bind.translation, bind.rotation, bind.scale);
+        }
         gpu.index_count = static_cast<uint32_t>(mesh.indices.size());
         gpu.has_lod_range = mesh.has_lod_range;
         gpu.lod_parent_block = mesh.lod_parent_block;
@@ -1154,6 +1185,33 @@ void BgfxRenderer::loadWorld(const RenderWorld& world) {
     }
     rebuildEnvironmentProbeTexture();
     global_probe_capture_dirty_ = true;
+    temporal_history_valid_ = false;
+}
+
+void BgfxRenderer::setAnimationPose(const AnimationPose& pose) {
+    for (GpuMesh& mesh : meshes_) {
+        mesh.pose_transform = identity();
+        auto mesh_node = skeleton_index_by_block_.find(mesh.source_node_block);
+        if (!mesh.is_skinned && mesh_node != skeleton_index_by_block_.end() &&
+            mesh_node->second < pose.node_world_matrices.size()) {
+            mesh.pose_transform =
+                pose.node_world_matrices[mesh_node->second] * mesh.node_inverse_bind;
+        }
+        if (!mesh.is_skinned) continue;
+        for (size_t bone = 0; bone < mesh.skin_palette.size(); ++bone) {
+            const int32_t block = mesh.skin_bone_node_blocks[bone];
+            auto node_index = block >= 0
+                ? skeleton_index_by_block_.find(static_cast<uint32_t>(block))
+                : skeleton_index_by_block_.end();
+            if (node_index == skeleton_index_by_block_.end() ||
+                node_index->second >= pose.node_world_matrices.size()) {
+                mesh.skin_palette[bone] = identity();
+                continue;
+            }
+            mesh.skin_palette[bone] =
+                pose.node_world_matrices[node_index->second] * mesh.skin_inverse_bind[bone];
+        }
+    }
     temporal_history_valid_ = false;
 }
 
@@ -1464,7 +1522,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
                 continue;
             }
 
-            bgfx::setTransform(identity_mtx);
+            bgfx::setTransform(mesh.pose_transform.m.data());
             bgfx::setVertexBuffer(0, mesh.vertex_buffer);
             bgfx::setIndexBuffer(mesh.index_buffer);
             const float shadow_diffuse[4] = {
@@ -1493,6 +1551,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             bgfx::setUniform(u_lu_alpha_test_, shadow_alpha_test.data());
             bgfx::setUniform(u_lu_effect_time_, shadow_effect_time);
             bgfx::setUniform(u_lu_uv_motion1_, shadow_uv_motion1);
+            bgfx::setUniform(u_skin_bones_, mesh.skin_palette.data(), 64);
             uint64_t shadow_state = BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
             if (mesh.material.cull_mode == RenderCullMode::Clockwise) {
                 shadow_state |= BGFX_STATE_CULL_CW;
@@ -1569,7 +1628,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             mesh.material.lu_shader_uses_shadow_terrain ? lu_light_color_shadow[3] : 1.0f
         };
 
-        bgfx::setTransform(identity_mtx);
+        bgfx::setTransform(mesh.pose_transform.m.data());
         bgfx::setVertexBuffer(0, mesh.vertex_buffer);
         bgfx::setIndexBuffer(mesh.index_buffer);
         const bool lego_family = isLegoppFamily(mesh.material.shader_family);
@@ -1701,14 +1760,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
         bgfx::setUniform(u_lu_bbb_light_color1_, bbb_light_color1);
         bgfx::setUniform(u_lu_bbb_light_color2_, bbb_light_color2);
 
-        std::array<float, 64 * 16> skin_bones{};
-        for (size_t bone = 0; bone < 64; ++bone) {
-            skin_bones[bone * 16 + 0] = 1.0f;
-            skin_bones[bone * 16 + 5] = 1.0f;
-            skin_bones[bone * 16 + 10] = 1.0f;
-            skin_bones[bone * 16 + 15] = 1.0f;
-        }
-        bgfx::setUniform(u_skin_bones_, skin_bones.data(), 64);
+        bgfx::setUniform(u_skin_bones_, mesh.skin_palette.data(), 64);
 
         if (mesh.material.shader_family == LegacyShaderFamily::GrayBubbleStencil) {
             bgfx::TransientVertexBuffer fullscreen;
@@ -1721,7 +1773,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
                 verts[2] = {-1.0f,  3.0f, 0.0f, 0.0f,-1.0f};
 
                 const auto bind_object = [&]() {
-                    bgfx::setTransform(identity_mtx);
+                    bgfx::setTransform(mesh.pose_transform.m.data());
                     bgfx::setVertexBuffer(0, mesh.vertex_buffer);
                     bgfx::setIndexBuffer(mesh.index_buffer);
                 };
@@ -1754,7 +1806,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
 
         if (post_enabled && scene_normal_enabled && bgfx::isValid(scene_normal_framebuffer_) &&
             bgfx::isValid(view_normal_program_) && depth_prepass_material) {
-            bgfx::setTransform(identity_mtx);
+            bgfx::setTransform(mesh.pose_transform.m.data());
             bgfx::setVertexBuffer(0, mesh.vertex_buffer);
             bgfx::setIndexBuffer(mesh.index_buffer);
             bgfx::setTexture(0, s_diffuse_, mesh.texture, mesh.texture_sampler_flags);
@@ -1763,6 +1815,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             bgfx::setUniform(u_lu_alpha_test_, alpha_test.data());
             bgfx::setUniform(u_lu_effect_time_, effect_time_uniform);
             bgfx::setUniform(u_lu_uv_motion1_, uv_motion1);
+            bgfx::setUniform(u_skin_bones_, mesh.skin_palette.data(), 64);
             uint64_t normal_state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z;
             if (mesh.material.depth_test) {
                 normal_state |= depthTestState(mesh.material.depth_test_function);
@@ -1790,7 +1843,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
 
         if (post_enabled && reflection_mask_enabled && bgfx::isValid(reflection_mask_framebuffer_) &&
             bgfx::isValid(reflection_mask_program_) && depth_prepass_material) {
-            bgfx::setTransform(identity_mtx);
+            bgfx::setTransform(mesh.pose_transform.m.data());
             bgfx::setVertexBuffer(0, mesh.vertex_buffer);
             bgfx::setIndexBuffer(mesh.index_buffer);
             bgfx::setTexture(0, s_diffuse_, mesh.texture, mesh.texture_sampler_flags);
@@ -1799,6 +1852,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             bgfx::setUniform(u_lu_alpha_test_, alpha_test.data());
             bgfx::setUniform(u_lu_effect_time_, effect_time_uniform);
             bgfx::setUniform(u_lu_uv_motion1_, uv_motion1);
+            bgfx::setUniform(u_skin_bones_, mesh.skin_palette.data(), 64);
             const float reflection_mask_value[4] = {
                 reflectionMaskForMaterial(mesh.material),
                 0.0f,
@@ -1814,7 +1868,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
         const bool transparent_bloom_material = isTransparentForwardMaterial(mesh.material) && bloom_mask > 0.0f;
         if (post_enabled && bloom_mask_enabled && bgfx::isValid(bloom_mask_framebuffer_) &&
             bgfx::isValid(reflection_mask_program_) && (depth_prepass_material || transparent_bloom_material)) {
-            bgfx::setTransform(identity_mtx);
+            bgfx::setTransform(mesh.pose_transform.m.data());
             bgfx::setVertexBuffer(0, mesh.vertex_buffer);
             bgfx::setIndexBuffer(mesh.index_buffer);
             bgfx::setTexture(0, s_diffuse_, mesh.texture, mesh.texture_sampler_flags);
@@ -1823,6 +1877,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             bgfx::setUniform(u_lu_alpha_test_, alpha_test.data());
             bgfx::setUniform(u_lu_effect_time_, effect_time_uniform);
             bgfx::setUniform(u_lu_uv_motion1_, uv_motion1);
+            bgfx::setUniform(u_skin_bones_, mesh.skin_palette.data(), 64);
             const float bloom_mask_value[4] = {
                 bloom_mask,
                 0.0f,
@@ -1877,7 +1932,11 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
         features_.lego_surface_model == SurfaceModel::PBR ? "on" : "off",
         features_.reflection_probe.enabled ? "on" : "off",
         features_.reflection_probe.intensity);
-    bgfx::dbgTextPrintf(0, 4, 0x0f, "mesh | shader label(id/gv) | variant program/port | source | res/meta | alpha/z | tex/dark | vc/meshvc | lod | fog/spec/refl/mat/sh | env | anim/ctrl | em");
+    uint16_t debug_row = 4;
+    if (!animation_debug_text_.empty()) {
+        bgfx::dbgTextPrintf(0, debug_row++, 0x0b, "%s", animation_debug_text_.c_str());
+    }
+    bgfx::dbgTextPrintf(0, debug_row++, 0x0f, "mesh | shader label(id/gv) | variant program/port | source | res/meta | alpha/z | tex/dark | vc/meshvc | lod | fog/spec/refl/mat/sh | env | anim/ctrl | em");
 
     const size_t debug_count = std::min<size_t>(meshes_.size(), 8);
     for (size_t i = 0; i < debug_count; ++i) {
@@ -1898,7 +1957,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
         }
         bgfx::dbgTextPrintf(
             0,
-            static_cast<uint16_t>(5 + i),
+            static_cast<uint16_t>(debug_row + i),
             material.lu_shader_resolved ? 0x0f : 0x0e,
             "%s | %s(%d/%d) | %s/%s/%s | %s | %s %s/%d | %s/%s t%d b%d zr%d zs%d | %s/%s | %d/%d | %s | %d/%d/%d/%d/%d | %s | u%d a%d c%d e%d k%zu | %.2f",
             name.c_str(),
@@ -1937,7 +1996,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             std::max({material.emissive.x, material.emissive.y, material.emissive.z}));
     }
     if (meshes_.size() > debug_count) {
-        bgfx::dbgTextPrintf(0, static_cast<uint16_t>(5 + debug_count), 0x07,
+        bgfx::dbgTextPrintf(0, static_cast<uint16_t>(debug_row + debug_count), 0x07,
             "... %zu more mesh(es)", meshes_.size() - debug_count);
     }
     ++frame_index_;
@@ -2347,7 +2406,7 @@ void BgfxRenderer::captureGlobalReflectionProbe(float effect_time) {
 
             float identity_mtx[16];
             bx::mtxIdentity(identity_mtx);
-            bgfx::setTransform(identity_mtx);
+            bgfx::setTransform(mesh.pose_transform.m.data());
             bgfx::setVertexBuffer(0, mesh.vertex_buffer);
             bgfx::setIndexBuffer(mesh.index_buffer);
             bgfx::setTexture(0, s_diffuse_, mesh.texture, mesh.texture_sampler_flags);
@@ -2436,6 +2495,7 @@ void BgfxRenderer::captureGlobalReflectionProbe(float effect_time) {
             bgfx::setUniform(u_lu_bbb_light_dir2_, bbb_light_dir2);
             bgfx::setUniform(u_lu_bbb_light_color1_, bbb_light_color1);
             bgfx::setUniform(u_lu_bbb_light_color2_, bbb_light_color2);
+            bgfx::setUniform(u_skin_bones_, mesh.skin_palette.data(), 64);
             bgfx::setState(renderStateForMaterial(mesh.material));
             bgfx::setStencil(stencilStateForMaterial(mesh.material));
             bgfx::submit(view_id, programForMaterial(mesh.material));
@@ -2452,7 +2512,10 @@ bgfx::ProgramHandle BgfxRenderer::programForMaterial(const MaterialAsset& materi
                 ? alpha_uv_scroll_skinned_program_
                 : alpha_uv_scroll_program_;
         }
-        return bgfx::isValid(basic_skinned_program_) ? basic_skinned_program_ : basic_program_;
+        if (material.shader_family == LegacyShaderFamily::Basic ||
+            material.shader_family == LegacyShaderFamily::BasicLit) {
+            return bgfx::isValid(basic_skinned_program_) ? basic_skinned_program_ : basic_program_;
+        }
     }
     switch (material.shader_family) {
     case LegacyShaderFamily::Basic:

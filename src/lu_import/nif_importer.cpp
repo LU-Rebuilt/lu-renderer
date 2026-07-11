@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -262,6 +263,29 @@ NifNodeHierarchy buildNifNodeHierarchy(const lu::assets::NifFile& nif) {
         }
     }
     return hierarchy;
+}
+
+NodeTransform nodeTransform(const lu::assets::NifNode& node) {
+    return {
+        {node.translation.x, node.translation.y, node.translation.z},
+        normalize(Quat{node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w}),
+        node.scale
+    };
+}
+
+Vec3 rotateBy(Quat rotation, Vec3 value) {
+    const Quat vector_quat{value.x, value.y, value.z, 0.0f};
+    const Quat inverse{-rotation.x, -rotation.y, -rotation.z, rotation.w};
+    const Quat rotated = rotation * vector_quat * inverse;
+    return {rotated.x, rotated.y, rotated.z};
+}
+
+NodeTransform composeNodeTransform(const NodeTransform& parent, const NodeTransform& child) {
+    return {
+        parent.translation + rotateBy(parent.rotation, child.translation * parent.scale),
+        normalize(parent.rotation * child.rotation),
+        parent.scale * child.scale
+    };
 }
 
 std::string nearestMultishaderParentName(
@@ -919,6 +943,39 @@ NifImportResult importNif(const NifImportOptions& options) {
         std::string nif_asset_path = ShaderDatabase::assetPathRelativeToRes(res_root, options.nif_path);
         result.world.source_asset_path = nif_asset_path;
 
+        result.world.skeleton_nodes.reserve(nif.nodes.size());
+        std::unordered_map<uint32_t, size_t> skeleton_index_by_block;
+        for (const auto& node : nif.nodes) {
+            SkeletonNode skeleton_node;
+            skeleton_node.block_index = node.block_index;
+            skeleton_node.name = node.name;
+            skeleton_node.bind_local = nodeTransform(node);
+            auto parent = nif_hierarchy.parent_by_block.find(node.block_index);
+            if (parent != nif_hierarchy.parent_by_block.end()) {
+                skeleton_node.parent_block = static_cast<int32_t>(parent->second);
+            }
+            skeleton_index_by_block[node.block_index] = result.world.skeleton_nodes.size();
+            result.world.skeleton_nodes.push_back(std::move(skeleton_node));
+        }
+        std::vector<uint8_t> skeleton_state(result.world.skeleton_nodes.size(), 0);
+        std::function<NodeTransform(size_t)> evaluate_bind_world = [&](size_t index) {
+            SkeletonNode& node = result.world.skeleton_nodes[index];
+            if (skeleton_state[index] == 2) return node.bind_world;
+            if (skeleton_state[index] == 1) return node.bind_local;
+            skeleton_state[index] = 1;
+            auto parent = node.parent_block >= 0
+                ? skeleton_index_by_block.find(static_cast<uint32_t>(node.parent_block))
+                : skeleton_index_by_block.end();
+            node.bind_world = parent == skeleton_index_by_block.end()
+                ? node.bind_local
+                : composeNodeTransform(evaluate_bind_world(parent->second), node.bind_local);
+            skeleton_state[index] = 2;
+            return node.bind_world;
+        };
+        for (size_t i = 0; i < result.world.skeleton_nodes.size(); ++i) {
+            evaluate_bind_world(i);
+        }
+
         result.world.meshes.reserve(extracted.meshes.size());
         for (const auto& mesh : extracted.meshes) {
             ResolvedLuShader resolved_shader;
@@ -993,7 +1050,8 @@ NifImportResult importNif(const NifImportOptions& options) {
             out.material.lu_shader_reflection_semantic = resolved_shader.policy.reflection_semantic;
             out.material.lu_shader_uses_uv_animation = resolved_shader.policy.uses_uv_animation;
             out.material.lu_shader_uses_alpha_animation = resolved_shader.policy.uses_alpha_animation;
-            out.material.lu_shader_requires_skinning = resolved_shader.policy.requires_skinning;
+            out.material.lu_shader_requires_skinning =
+                resolved_shader.policy.requires_skinning || mesh.is_skinned;
             out.material.nif_has_material_color_controller = nif_has_material_color_controller;
             out.material.nif_diffuse_texture_has_alpha_format =
                 mesh.material.diffuse_texture_has_alpha_format;

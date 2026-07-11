@@ -175,9 +175,18 @@ IDs 52-56 use the recovered skinned vertex contracts: four blend indices and
 weights feed a 64-matrix runtime bone palette, with normals deformed for the lit
 technique. Zero-weight geometry takes the authored static path. Shader 52's sole
 direct client asset, `mesh/env/env_nim_pa_spacerock.nif`, has no
-`NiSkinInstance`, and IDs 53-56 have no direct CDClient users. Animation-clip
-evaluation and playback are separate engine functionality; they are not being
-claimed as part of the FX technique port.
+`NiSkinInstance`, and IDs 53-56 have no direct CDClient users.
+
+Runtime animation imports KFM/KF transform tracks, evaluates linear and
+quadratic translation plus quaternion, Euler, and scale channels, and builds
+the 64-matrix skin palette from animated bone world transforms and NIF bind
+transforms. LU's KF quaternion convention is conjugated into the renderer's NIF
+convention at import. Hardware weights stored in `NiSkinPartition` are resolved
+through each partition's vertex map and local bone table. KFM import also loads
+its referenced model automatically in the NIF viewer. The full client audit
+finds 1,559 skinned render meshes, a maximum palette size of 50 bones, and
+2,649,300 weighted vertices out of 2,649,306 skin vertices; the runtime's
+64-matrix palette therefore covers every observed LU mesh.
 
 IDs 32 and 62 run the complete recovered Gray Bubble sequence: fullscreen
 stencil clear, object backface stencil, backface grayout, interior ghost,
@@ -253,6 +262,5 @@ The initial legacy shader uses:
 This list describes the original milestone only. The current renderer has since
 added source-backed specular, reflection maps, fog, authored alpha/depth/stencil
 state, terrain/ocean families, and specialized FX programs. Runtime skeletal
-shader deformation and the full Gray Bubble orchestration are now present.
-Animation playback and particles remain separate engine work as documented
-above.
+shader deformation, KFM/KF animation playback, and the full Gray Bubble
+orchestration are now present. Particles remain separate engine work.

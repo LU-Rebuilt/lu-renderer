@@ -3,6 +3,7 @@
 #include "lu/renderer/math.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -209,7 +210,7 @@ struct NifNodePathEntry {
 
 struct DirectionalLight {
     Vec3 position = {1.0f, 1.0f, 1.0f};
-    Vec3 direction = normalize({1.0f, 1.0f, 1.0f});
+    Vec3 direction = normalize(Vec3{1.0f, 1.0f, 1.0f});
     Vec3 color = {1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
 };
@@ -530,6 +531,51 @@ struct AnimationTextKey {
     std::string text;
 };
 
+struct NodeTransform {
+    Vec3 translation{};
+    Quat rotation{};
+    float scale = 1.0f;
+};
+
+struct SkeletonNode {
+    uint32_t block_index = 0;
+    int32_t parent_block = -1;
+    std::string name;
+    NodeTransform bind_local;
+    NodeTransform bind_world;
+};
+
+struct AnimationVec3Key {
+    float time = 0.0f;
+    Vec3 value{};
+    Vec3 forward_tangent{};
+    Vec3 backward_tangent{};
+};
+
+struct AnimationQuatKey {
+    float time = 0.0f;
+    Quat value{};
+};
+
+struct AnimationFloatKey {
+    float time = 0.0f;
+    float value = 0.0f;
+};
+
+struct AnimationTransformTrack {
+    bool present = false;
+    NodeTransform default_transform;
+    uint32_t rotation_key_type = 0;
+    uint32_t translation_key_type = 0;
+    uint32_t scale_key_type = 0;
+    std::vector<AnimationQuatKey> rotation_keys;
+    std::vector<AnimationFloatKey> euler_x_keys;
+    std::vector<AnimationFloatKey> euler_y_keys;
+    std::vector<AnimationFloatKey> euler_z_keys;
+    std::vector<AnimationVec3Key> translation_keys;
+    std::vector<AnimationFloatKey> scale_keys;
+};
+
 struct AnimationControlledBlock {
     std::string node_name;
     std::string controller_type;
@@ -539,6 +585,7 @@ struct AnimationControlledBlock {
     int32_t interpolator_ref = -1;
     int32_t controller_ref = -1;
     uint8_t priority = 0;
+    AnimationTransformTrack transform_track;
 };
 
 struct AnimationClip {
@@ -561,9 +608,16 @@ struct AnimationAsset {
     std::vector<AnimationClip> clips;
 };
 
+struct AnimationPose {
+    size_t clip_index = 0;
+    float sample_time = 0.0f;
+    std::vector<Mat4> node_world_matrices;
+};
+
 struct RenderWorld {
     std::string source_asset_path;
     std::vector<MeshAsset> meshes;
+    std::vector<SkeletonNode> skeleton_nodes;
     AnimationAsset animation;
     EnvironmentState environment;
 };

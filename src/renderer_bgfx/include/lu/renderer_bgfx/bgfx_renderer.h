@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace lu::renderer::bgfx_backend {
@@ -39,6 +40,8 @@ public:
     void shutdown();
     void resize(uint32_t width, uint32_t height);
     void loadWorld(const RenderWorld& world);
+    void setAnimationPose(const AnimationPose& pose);
+    void setAnimationDebugText(std::string text) { animation_debug_text_ = std::move(text); }
     void setEnvironment(const EnvironmentState& environment);
     void setFeatureSettings(const RenderFeatureSettings& features);
     const RenderFeatureSettings& featureSettings() const { return features_; }
@@ -73,6 +76,13 @@ private:
         Vec3 lod_center = {0.0f, 0.0f, 0.0f};
         Vec3 bounds_min = {0.0f, 0.0f, 0.0f};
         Vec3 bounds_max = {0.0f, 0.0f, 0.0f};
+        bool is_skinned = false;
+        uint32_t source_node_block = 0;
+        Mat4 node_inverse_bind = identity();
+        Mat4 pose_transform = identity();
+        std::array<int32_t, 64> skin_bone_node_blocks{};
+        std::array<Mat4, 64> skin_inverse_bind{};
+        std::array<Mat4, 64> skin_palette{};
     };
 
     bgfx::ShaderHandle loadShader(const char* name);
@@ -132,6 +142,8 @@ private:
     std::filesystem::path reflection_map_dir_;
     std::string source_asset_path_;
     std::vector<GpuMesh> meshes_;
+    std::unordered_map<uint32_t, size_t> skeleton_index_by_block_;
+    std::string animation_debug_text_;
     std::unordered_map<std::string, bgfx::TextureHandle> texture_cache_;
     std::unordered_map<std::string, bgfx::TextureHandle> cube_texture_cache_;
     EnvironmentState environment_;

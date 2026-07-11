@@ -1391,6 +1391,10 @@ int printPropertyCoverage(const Args& args) {
     std::vector<std::string> failure_samples;
     size_t assets = 0;
     size_t meshes = 0;
+    size_t skinned_meshes = 0;
+    size_t max_skin_bones = 0;
+    size_t skinned_vertices = 0;
+    size_t weighted_skin_vertices = 0;
     size_t failures = 0;
 
     std::error_code ec;
@@ -1421,6 +1425,14 @@ int printPropertyCoverage(const Args& args) {
             ++assets;
             for (const auto& mesh : extracted.meshes) {
                 ++meshes;
+                if (mesh.is_skinned) {
+                    ++skinned_meshes;
+                    max_skin_bones = std::max(max_skin_bones, mesh.skin_bone_node_blocks.size());
+                    skinned_vertices += mesh.vertex_influences.size();
+                    weighted_skin_vertices += static_cast<size_t>(std::count_if(
+                        mesh.vertex_influences.begin(), mesh.vertex_influences.end(),
+                        [](const auto& influences) { return !influences.empty(); }));
+                }
                 const auto& state = mesh.material.resolved_state;
                 if (state.has_alpha) ++alpha_flags[state.alpha_flags];
                 if (state.has_vertex_color) ++vertex_color_flags[state.vertex_color_flags];
@@ -1462,6 +1474,10 @@ int printPropertyCoverage(const Args& args) {
     printCounts("shadeFlags", shade_flags);
     printCounts("stencilFlags", stencil_flags);
     printCounts("sortModes", sort_modes);
+    std::cout << "skinning meshes=" << skinned_meshes
+              << " maxBones=" << max_skin_bones
+              << " weightedVertices=" << weighted_skin_vertices << "/" << skinned_vertices
+              << "\n";
     std::cout << "flatShadeSamples " << joinSamples(flat_shade_samples) << "\n";
     std::cout << "failureSamples " << joinSamples(failure_samples) << "\n";
     return failures == 0 ? 0 : 1;

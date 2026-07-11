@@ -1,3 +1,4 @@
+#include "lu/renderer/animation.h"
 #include "lu/renderer/lu_import/lvl_environment_importer.h"
 #include "lu/renderer/lu_import/nif_importer.h"
 #include "lu/renderer/lu_import/shader_database.h"
@@ -1556,6 +1557,62 @@ int main() {
            gray_bubble_passes[5].stencil_test_function == 2 &&
            gray_bubble_passes[5].stencil_reference == 1,
         "Gray Bubble pass 6 grays the frontface stencil region");
+
+    AnimationClip loop_clip;
+    loop_clip.start_time = 2.0f;
+    loop_clip.stop_time = 4.0f;
+    loop_clip.frequency = 2.0f;
+    loop_clip.cycle_type = 0;
+    expectNear(animationSampleTime(loop_clip, 1.25f), 2.5f,
+        "looping animation time applies frequency and wraps within the clip");
+    loop_clip.cycle_type = 2;
+    expectNear(animationSampleTime(loop_clip, 10.0f), 4.0f,
+        "clamped animation time stops at the clip end");
+    loop_clip.cycle_type = 1;
+    loop_clip.frequency = 1.0f;
+    expectNear(animationSampleTime(loop_clip, 3.0f), 3.0f,
+        "reverse animation time ping-pongs across the clip");
+
+    RenderWorld animated_world;
+    SkeletonNode root_node;
+    root_node.block_index = 1;
+    root_node.name = "root";
+    root_node.bind_world = root_node.bind_local;
+    SkeletonNode child_node;
+    child_node.block_index = 2;
+    child_node.parent_block = 1;
+    child_node.name = "child";
+    child_node.bind_local.translation = {1.0f, 0.0f, 0.0f};
+    child_node.bind_world = child_node.bind_local;
+    animated_world.skeleton_nodes = {root_node, child_node};
+    AnimationClip pose_clip;
+    pose_clip.stop_time = 1.0f;
+    AnimationControlledBlock child_track;
+    child_track.node_name = "child";
+    child_track.transform_track.present = true;
+    child_track.transform_track.default_transform = child_node.bind_local;
+    child_track.transform_track.translation_key_type = 1;
+    child_track.transform_track.translation_keys = {
+        {0.0f, {1.0f, 0.0f, 0.0f}},
+        {1.0f, {3.0f, 0.0f, 0.0f}}
+    };
+    pose_clip.controlled_blocks.push_back(child_track);
+    animated_world.animation.clips.push_back(pose_clip);
+    const AnimationPose half_pose = evaluateAnimationPose(animated_world, 0, 0.5f);
+    expectNear(half_pose.node_world_matrices[1].m[12], 2.0f,
+        "animation pose evaluates and composes a child translation track");
+
+    const NodeTransform inverse_fixture{{2.0f, -3.0f, 4.0f}, normalize(Quat{0.2f, -0.3f, 0.1f, 0.9f}), 1.5f};
+    const Mat4 fixture_matrix = transform_matrix(
+        inverse_fixture.translation, inverse_fixture.rotation, inverse_fixture.scale);
+    const Mat4 fixture_inverse = inverse_transform_matrix(
+        inverse_fixture.translation, inverse_fixture.rotation, inverse_fixture.scale);
+    const Vec3 restored_point = transform_point(
+        fixture_inverse,
+        transform_point(fixture_matrix, {1.0f, 2.0f, -1.0f}));
+    expectNear(restored_point.x, 1.0f, "inverse bind matrix restores point X");
+    expectNear(restored_point.y, 2.0f, "inverse bind matrix restores point Y");
+    expectNear(restored_point.z, -1.0f, "inverse bind matrix restores point Z");
 
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -1,14 +1,24 @@
-$input a_position, a_texcoord0, a_color0
+$input a_position, a_indices, a_weight, a_texcoord0, a_color0
 $output v_texcoord0, v_color0
 
 #include <bgfx_shader.sh>
 
 uniform vec4 u_luEffectTime;
 uniform vec4 u_luUvMotion1;
+uniform mat4 u_skinBones[64];
 
 void main()
 {
-    gl_Position = mul(u_modelViewProj, vec4(a_position, 1.0));
+    vec4 localPos = vec4(a_position, 1.0);
+    vec4 worldPos = mul(u_model[0], localPos);
+    if (dot(a_weight, vec4_splat(1.0)) > 0.00001) {
+        worldPos =
+            mul(u_skinBones[int(a_indices.x + 0.5)], localPos) * a_weight.x +
+            mul(u_skinBones[int(a_indices.y + 0.5)], localPos) * a_weight.y +
+            mul(u_skinBones[int(a_indices.z + 0.5)], localPos) * a_weight.z +
+            mul(u_skinBones[int(a_indices.w + 0.5)], localPos) * a_weight.w;
+    }
+    gl_Position = mul(u_viewProj, worldPos);
     v_texcoord0 = a_texcoord0 + (u_luUvMotion1.xy * u_luEffectTime.x * u_luEffectTime.y);
     v_color0 = a_color0;
 }
