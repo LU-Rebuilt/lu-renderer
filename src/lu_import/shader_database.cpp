@@ -689,22 +689,34 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.port_status = ShaderPortStatus::Verified;
         break;
     case 32:
-        policy.shader_family = LegacyShaderFamily::LegacyMesh;
+        policy.shader_family = LegacyShaderFamily::GrayBubbleStencil;
         policy.source_file = "GrayBubble.fx";
         policy.source_technique = "Technique_GrayBubble_FullscreenStencilClear";
         policy.source_status_note =
-            "Gray Bubble is a six-technique fullscreen/object stencil orchestration, not a single mesh program; CDClient has zero direct shader-32 assets.";
+            "Implements the complete six-technique fullscreen/object stencil sequence from GrayBubble.fx.";
+        policy.validation_status_note =
+            "CDClient has zero direct shader-32 assets; validated through explicit pass-state tests and cross-backend shader compilation.";
         policy.uses_ni_render_state = false;
-        policy.port_status = ShaderPortStatus::Unported;
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 62:
-        policy.shader_family = LegacyShaderFamily::LegacyMesh;
+        policy.shader_family = LegacyShaderFamily::GrayBubbleStencil;
         policy.source_file = "PostProcessingShaders.fx";
         policy.source_technique = "Technique_GrayBubble_FullscreenStencilClear";
         policy.source_status_note =
-            "Post-process Gray Bubble is a six-technique fullscreen/object stencil orchestration, not a single mesh program; CDClient has zero direct shader-62 assets.";
+            "Implements the complete six-technique fullscreen/object stencil sequence from PostProcessingShaders.fx.";
+        policy.validation_status_note =
+            "CDClient has zero direct shader-62 assets; validated through explicit pass-state tests and cross-backend shader compilation.";
         policy.uses_ni_render_state = false;
-        policy.port_status = ShaderPortStatus::Unported;
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 35:
         policy.shader_family = LegacyShaderFamily::Basic;
@@ -951,42 +963,50 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.shader_family = LegacyShaderFamily::BasicLit;
         policy.source_file = "BasicShaders.fx";
         policy.source_technique = "Technique_Basic_Lighting_VertColor_Skinned";
-        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.source_status_note = "Exact FX technique uses the runtime 64-matrix bone palette with blend-index and blend-weight vertex inputs.";
         policy.uses_vertex_color = true;
+        policy.requires_skinning = true;
         policy.uses_specular = false;
         policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 54:
         policy.shader_family = LegacyShaderFamily::Basic;
         policy.source_file = "BasicShaders.fx";
         policy.source_technique = "Technique_Basic_NoLighting_Skinned";
-        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.source_status_note = "Exact FX technique uses the runtime 64-matrix bone palette with blend-index and blend-weight vertex inputs.";
         policy.uses_lighting = false;
+        policy.requires_skinning = true;
         policy.uses_specular = false;
         policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 55:
         policy.shader_family = LegacyShaderFamily::Basic;
         policy.source_file = "BasicShaders.fx";
         policy.source_technique = "Technique_Basic_NoLighting_VertColor_Skinned";
-        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.source_status_note = "Exact FX technique uses the runtime 64-matrix bone palette with blend-index and blend-weight vertex inputs.";
         policy.uses_vertex_color = true;
+        policy.requires_skinning = true;
         policy.uses_lighting = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 56:
         policy.shader_family = LegacyShaderFamily::Basic;
         policy.source_file = "BasicShaders.fx";
         policy.source_technique = "Technique_Basic_NoLighting_VertColor_NoTexture_Skinned";
-        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.source_status_note = "Exact FX technique uses the runtime 64-matrix bone palette with blend-index and blend-weight vertex inputs.";
         policy.uses_vertex_color = true;
+        policy.requires_skinning = true;
         policy.uses_texture = false;
         policy.uses_lighting = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
         policy.uses_alpha_animation = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 52:
         policy.shader_family = LegacyShaderFamily::AlphaUvScroll;
@@ -995,6 +1015,7 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.source_file = "AlphaAsAlpha.fx";
         policy.source_technique = "Technique_AlphaAsAlphaSkinned_UVScrolling_SimpleV_NoLighting_AlphaAnim";
         policy.uses_vertex_color = true;
+        policy.requires_skinning = true;
         policy.uses_lighting = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
@@ -1003,8 +1024,10 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.uv_motion_layer1 = {0.0f, 0.16f};
         policy.source_status_note =
-            "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
-        policy.port_status = ShaderPortStatus::Unported;
+            "Exact FX technique uses the runtime bone-palette vertex path; the sole CDClient asset has no NiSkinInstance and therefore uses the authored static fallback.";
+        policy.validation_status_note =
+            "Validated against mesh\\env\\env_nim_pa_spacerock.nif, the only direct shader-52 asset.";
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 57:
         policy.shader_family = LegacyShaderFamily::AlphaUvScroll;

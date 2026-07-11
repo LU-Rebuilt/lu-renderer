@@ -523,8 +523,9 @@ int main() {
     LuShaderInfo basic_skinned{55, 62, "OneSidedAlpha NL VC Skinned"};
     LuShaderPolicy basic_skinned_policy = shaderPolicyFromInfo(basic_skinned);
     expect(basic_skinned_policy.source_technique == "Technique_Basic_NoLighting_VertColor_Skinned", "skinned Basic source technique recovered");
-    expect(basic_skinned_policy.source_status_note.find("bone-matrix skinning") != std::string::npos, "skinned Basic records engine gap");
-    expect(basic_skinned_policy.port_status == ShaderPortStatus::Unported, "skinned Basic remains unported until runtime skinning exists");
+    expect(basic_skinned_policy.requires_skinning, "skinned Basic selects the bone-palette vertex path");
+    expect(basic_skinned_policy.source_status_note.find("64-matrix bone palette") != std::string::npos, "skinned Basic records its runtime palette");
+    expect(basic_skinned_policy.port_status == ShaderPortStatus::Verified, "skinned Basic runtime path verified");
 
     LuShaderInfo tv_screen{8, 17, "TV Screen"};
     LuShaderPolicy tv_screen_policy = shaderPolicyFromInfo(tv_screen);
@@ -834,6 +835,21 @@ int main() {
     expect(gray_bubble_ghost_policy.cull_mode == RenderCullMode::Clockwise, "Gray Bubble ghost source cull mode");
     expect(gray_bubble_ghost_policy.port_status == ShaderPortStatus::Verified, "Gray Bubble ghost source verified");
 
+    LuShaderInfo fogless_gray_bubble{32, 24, "Fogless GrayBubble"};
+    LuShaderPolicy fogless_gray_bubble_policy = shaderPolicyFromInfo(fogless_gray_bubble);
+    expect(fogless_gray_bubble_policy.shader_family == LegacyShaderFamily::GrayBubbleStencil, "Fogless Gray Bubble selects six-pass stencil orchestration");
+    expect(fogless_gray_bubble_policy.source_file == "GrayBubble.fx", "Fogless Gray Bubble source file");
+    expect(!fogless_gray_bubble_policy.uses_ni_render_state, "Fogless Gray Bubble ignores Ni render state");
+    expect(fogless_gray_bubble_policy.source_status_note.find("complete six-technique") != std::string::npos, "Fogless Gray Bubble records complete pass sequence");
+    expect(fogless_gray_bubble_policy.port_status == ShaderPortStatus::Verified, "Fogless Gray Bubble orchestration verified");
+
+    LuShaderInfo post_gray_bubble{62, 71, "PostProcess Gray Bubble"};
+    LuShaderPolicy post_gray_bubble_policy = shaderPolicyFromInfo(post_gray_bubble);
+    expect(post_gray_bubble_policy.shader_family == LegacyShaderFamily::GrayBubbleStencil, "Post Gray Bubble selects six-pass stencil orchestration");
+    expect(post_gray_bubble_policy.source_file == "PostProcessingShaders.fx", "Post Gray Bubble source file");
+    expect(!post_gray_bubble_policy.uses_ni_render_state, "Post Gray Bubble ignores Ni render state");
+    expect(post_gray_bubble_policy.port_status == ShaderPortStatus::Verified, "Post Gray Bubble orchestration verified");
+
     LuShaderInfo ocean_flat{68, 78, "Flat Surf"};
     LuShaderPolicy ocean_flat_policy = shaderPolicyFromInfo(ocean_flat);
     expect(ocean_flat_policy.shader_family == LegacyShaderFamily::OceanFlatSurf, "Flat Surf uses Ocean flat-surface program");
@@ -1085,7 +1101,8 @@ int main() {
     expect(!one_sided_alpha_skinned_policy.uses_lighting, "OneSidedAlpha skinned is no-light");
     expect(one_sided_alpha_skinned_policy.uses_uv_animation, "OneSidedAlpha skinned scrolls UVs");
     expect(one_sided_alpha_skinned_policy.uses_alpha_animation, "OneSidedAlpha skinned uses fade alpha");
-    expect(one_sided_alpha_skinned_policy.port_status == ShaderPortStatus::Unported, "OneSidedAlpha skinned waits for runtime bone matrices");
+    expect(one_sided_alpha_skinned_policy.requires_skinning, "OneSidedAlpha skinned selects the bone-palette vertex path");
+    expect(one_sided_alpha_skinned_policy.port_status == ShaderPortStatus::Verified, "OneSidedAlpha skinned runtime path verified");
 
     LuShaderInfo one_sided_alpha{57, 64, "OneSidedAlpha AnimUV V"};
     LuShaderPolicy one_sided_alpha_policy = shaderPolicyFromInfo(one_sided_alpha);
@@ -1494,6 +1511,51 @@ int main() {
         "blending preserves an independently requested depth write");
     expect(current_state.submitted_alpha_blend,
         "current state diagnostic exposes submitted alpha blending");
+
+    const auto gray_bubble_passes = grayBubblePassPlan();
+    expect(gray_bubble_passes.size() == 6,
+        "Gray Bubble preserves the recovered six-pass technique order");
+    expect(gray_bubble_passes[0].geometry == GrayBubblePassGeometry::Fullscreen &&
+           !gray_bubble_passes[0].color_write && !gray_bubble_passes[0].depth_test &&
+           gray_bubble_passes[0].stencil_test_function == 7 &&
+           gray_bubble_passes[0].stencil_reference == 2 &&
+           gray_bubble_passes[0].stencil_pass_action == 2,
+        "Gray Bubble pass 1 clears stencil to reference 2");
+    expect(gray_bubble_passes[1].geometry == GrayBubblePassGeometry::ObjectStencil &&
+           gray_bubble_passes[1].depth_test &&
+           gray_bubble_passes[1].cull_mode == RenderCullMode::CounterClockwise &&
+           gray_bubble_passes[1].stencil_z_fail_action == 1,
+        "Gray Bubble pass 2 marks occluded backfaces");
+    expect(gray_bubble_passes[2].geometry == GrayBubblePassGeometry::Fullscreen &&
+           gray_bubble_passes[2].color_write && gray_bubble_passes[2].alpha_blend &&
+           gray_bubble_passes[2].source_blend == 0 &&
+           gray_bubble_passes[2].destination_blend == 7 &&
+           gray_bubble_passes[2].stencil_test_function == 2 &&
+           gray_bubble_passes[2].stencil_reference == 2,
+        "Gray Bubble pass 3 grays the backface stencil region");
+    expect(gray_bubble_passes[3].geometry == GrayBubblePassGeometry::ObjectGhost &&
+           gray_bubble_passes[3].color_write && gray_bubble_passes[3].depth_test &&
+           gray_bubble_passes[3].depth_write &&
+           gray_bubble_passes[3].cull_mode == RenderCullMode::Clockwise &&
+           gray_bubble_passes[3].source_blend == 6 &&
+           gray_bubble_passes[3].destination_blend == 7 &&
+           gray_bubble_passes[3].stencil_reference == 2 &&
+           gray_bubble_passes[3].stencil_pass_action == 2,
+        "Gray Bubble pass 4 draws and records the ghost object");
+    expect(gray_bubble_passes[4].geometry == GrayBubblePassGeometry::ObjectStencil &&
+           gray_bubble_passes[4].depth_test && !gray_bubble_passes[4].depth_write &&
+           gray_bubble_passes[4].cull_mode == RenderCullMode::Clockwise &&
+           gray_bubble_passes[4].stencil_test_function == 4 &&
+           gray_bubble_passes[4].stencil_reference == 1 &&
+           gray_bubble_passes[4].stencil_z_fail_action == 2,
+        "Gray Bubble pass 5 marks occluded frontfaces");
+    expect(gray_bubble_passes[5].geometry == GrayBubblePassGeometry::Fullscreen &&
+           gray_bubble_passes[5].color_write && gray_bubble_passes[5].alpha_blend &&
+           gray_bubble_passes[5].source_blend == 0 &&
+           gray_bubble_passes[5].destination_blend == 7 &&
+           gray_bubble_passes[5].stencil_test_function == 2 &&
+           gray_bubble_passes[5].stencil_reference == 1,
+        "Gray Bubble pass 6 grays the frontface stencil region");
 
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

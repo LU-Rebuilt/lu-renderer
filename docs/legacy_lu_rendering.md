@@ -166,19 +166,26 @@ header is rejected as malformed (`block type name too long`).
 
 The July 11, 2026 source audit maps all 467 recovered `.fx` techniques into the
 catalog (`mapped=467`, `unmapped=0`). Across the 100 CDClient shader rows, the
-current evidence ledger is 77 verified, 14 inferred, 7 unported, and 2 not
+current evidence ledger is 84 verified, 14 inferred, 0 unported, and 2 not
 applicable. `Verified` means the selected source technique, shader math, texture
 roles, and forced render state are implemented; it does not mean a merely
 similar technique was found.
 
-The seven unported rows are deliberately explicit:
+IDs 52-56 use the recovered skinned vertex contracts: four blend indices and
+weights feed a 64-matrix runtime bone palette, with normals deformed for the lit
+technique. Zero-weight geometry takes the authored static path. Shader 52's sole
+direct client asset, `mesh/env/env_nim_pa_spacerock.nif`, has no
+`NiSkinInstance`, and IDs 53-56 have no direct CDClient users. Animation-clip
+evaluation and playback are separate engine functionality; they are not being
+claimed as part of the FX technique port.
 
-- IDs 52-56 are exact recovered skinned techniques. Their static pixel paths
-  are known, but runtime bone-matrix deformation is not implemented, so they
-  must not be reported as verified bind-pose shader ports.
-- IDs 32 and 62 name the six-technique Gray Bubble fullscreen/object stencil
-  orchestration. CDClient has no direct assets assigned to either row. The
-  actual asset-facing interior ghost row, ID 69, is implemented separately.
+IDs 32 and 62 run the complete recovered Gray Bubble sequence: fullscreen
+stencil clear, object backface stencil, backface grayout, interior ghost,
+object frontface stencil, and frontface grayout. The world view is submitted in
+sequential mode so those passes retain source order. CDClient has no direct
+assets assigned to either row, so validation uses exact pass-state tests and
+cross-backend shader compilation. The asset-facing interior ghost row, ID 69,
+remains implemented separately for its 15 direct assets.
 
 IDs 0 and 100 are not GPU shader ports: ID 0 denotes the D3D9 fixed-function
 pipeline and has no resolved current render-mesh users; ID 100 is the
@@ -214,6 +221,16 @@ depth test and write, clockwise culling, stencil `Always` with pass `Replace`
 and reference 2. The pixel path is exactly base texture times vertex color/fade
 alpha.
 
+### Gray Bubble stencil orchestration
+
+Shaders 32 and 62 use the six-pass Gray Bubble orchestration recovered from
+`GrayBubble.fx` and `PostProcessingShaders.fx`. The renderer keeps the six
+geometry, color/depth, cull, blend, stencil comparison/reference, and stencil
+operation records in one explicit pass plan. The backend executes that plan in
+order using the original gray overlay color `(0.0878, 0.117, 0.132, 0.75)`.
+Unit tests lock the complete pass order and state contract even though the
+current CDClient has no directly assigned model fixture.
+
 ## Known Real-Asset Contracts
 
 | Asset | Evidence and expected result |
@@ -236,5 +253,6 @@ The initial legacy shader uses:
 This list describes the original milestone only. The current renderer has since
 added source-backed specular, reflection maps, fog, authored alpha/depth/stencil
 state, terrain/ocean families, and specialized FX programs. Runtime skeletal
-deformation, particles, and the full Gray Bubble orchestration remain separate
-engine work as documented above.
+shader deformation and the full Gray Bubble orchestration are now present.
+Animation playback and particles remain separate engine work as documented
+above.

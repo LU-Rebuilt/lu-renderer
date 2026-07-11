@@ -48,7 +48,8 @@ enum class LegacyShaderFamily {
     TerrainTextureOnly,
     TerrainDiffuseMapOnly,
     BrickWater,
-    GrayBubbleGhost
+    GrayBubbleGhost,
+    GrayBubbleStencil
 };
 
 enum class LegoppShaderVariant {
@@ -351,6 +352,7 @@ struct MaterialAsset {
     std::string lu_shader_reflection_semantic;
     bool lu_shader_uses_uv_animation = false;
     bool lu_shader_uses_alpha_animation = false;
+    bool lu_shader_requires_skinning = false;
     bool nif_has_material_color_controller = false;
     bool material_emissive_controller = false;
     float material_emissive_controller_frequency = 1.0f;
@@ -436,6 +438,39 @@ struct CurrentRenderStateDiagnostic {
     uint8_t submitted_stencil_reference = 0;
     uint8_t submitted_stencil_read_mask = 0xff;
 };
+
+enum class GrayBubblePassGeometry {
+    Fullscreen,
+    ObjectStencil,
+    ObjectGhost
+};
+
+struct GrayBubblePassState {
+    GrayBubblePassGeometry geometry = GrayBubblePassGeometry::Fullscreen;
+    bool color_write = false;
+    bool depth_test = false;
+    bool depth_write = false;
+    RenderCullMode cull_mode = RenderCullMode::TwoSided;
+    bool alpha_blend = false;
+    uint8_t source_blend = 0;
+    uint8_t destination_blend = 1;
+    uint8_t stencil_test_function = 7;
+    uint8_t stencil_reference = 0;
+    uint8_t stencil_fail_action = 0;
+    uint8_t stencil_z_fail_action = 0;
+    uint8_t stencil_pass_action = 0;
+};
+
+inline constexpr std::array<GrayBubblePassState, 6> grayBubblePassPlan() {
+    return {{
+        {GrayBubblePassGeometry::Fullscreen,    false, false, false, RenderCullMode::TwoSided,         false, 0, 1, 7, 2, 0, 0, 2},
+        {GrayBubblePassGeometry::ObjectStencil, false, true,  false, RenderCullMode::CounterClockwise, false, 0, 1, 7, 2, 0, 1, 0},
+        {GrayBubblePassGeometry::Fullscreen,    true,  false, false, RenderCullMode::Clockwise,        true,  0, 7, 2, 2, 0, 0, 0},
+        {GrayBubblePassGeometry::ObjectGhost,   true,  true,  true,  RenderCullMode::Clockwise,        true,  6, 7, 7, 2, 0, 0, 2},
+        {GrayBubblePassGeometry::ObjectStencil, false, true,  false, RenderCullMode::Clockwise,        false, 0, 1, 4, 1, 0, 2, 0},
+        {GrayBubblePassGeometry::Fullscreen,    true,  false, false, RenderCullMode::TwoSided,         true,  0, 7, 2, 1, 0, 0, 0}
+    }};
+}
 
 inline CurrentRenderStateDiagnostic currentRenderStateDiagnostic(const MaterialAsset& material) {
     CurrentRenderStateDiagnostic state;

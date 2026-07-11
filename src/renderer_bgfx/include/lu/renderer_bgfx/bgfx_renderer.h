@@ -142,6 +142,8 @@ private:
     bgfx::ProgramHandle basic_two_layer_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle alpha_as_alpha_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle alpha_uv_scroll_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle basic_skinned_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle alpha_uv_scroll_skinned_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle legopp_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle legopp_no_ambient_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle legopp_emissive_program_ = BGFX_INVALID_HANDLE;
@@ -164,6 +166,8 @@ private:
     bgfx::ProgramHandle terrain_diffuse_map_only_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle brick_water_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle gray_bubble_ghost_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle gray_bubble_fill_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle gray_bubble_color_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle shadow_depth_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle post_process_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle bloom_program_ = BGFX_INVALID_HANDLE;
@@ -186,6 +190,7 @@ private:
     bgfx::UniformHandle s_color_lut_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_shadow_map_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_matrix_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_skin_bones_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_params_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_bias_params_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_light_dir_ = BGFX_INVALID_HANDLE;

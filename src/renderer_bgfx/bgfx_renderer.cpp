@@ -46,6 +46,8 @@ struct GpuVertex {
     float bx, by, bz;
     float u, v;
     float u2, v2;
+    float i0, i1, i2, i3;
+    float w0, w1, w2, w3;
     uint32_t abgr;
 
     static bgfx::VertexLayout layout;
@@ -57,6 +59,8 @@ struct GpuVertex {
             .add(bgfx::Attrib::Bitangent, 3, bgfx::AttribType::Float)
             .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
             .add(bgfx::Attrib::TexCoord1, 2, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Indices, 4, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Weight, 4, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
             .end();
     }
@@ -215,6 +219,7 @@ const char* shaderFamilyName(LegacyShaderFamily family) {
     case LegacyShaderFamily::TerrainDiffuseMapOnly: return "terrain-diffuse-only";
     case LegacyShaderFamily::BrickWater: return "brick-water";
     case LegacyShaderFamily::GrayBubbleGhost: return "gray-bubble-ghost";
+    case LegacyShaderFamily::GrayBubbleStencil: return "gray-bubble-stencil";
     }
     return "?";
 }
@@ -609,6 +614,31 @@ uint32_t stencilStateForMaterial(const MaterialAsset& material) {
            stencilPassOp(material.stencil_pass_action);
 }
 
+uint64_t renderStateForGrayBubblePass(const GrayBubblePassState& pass) {
+    uint64_t state = 0;
+    if (pass.color_write) state |= BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
+    if (pass.depth_test) state |= BGFX_STATE_DEPTH_TEST_LESS;
+    if (pass.depth_write) state |= BGFX_STATE_WRITE_Z;
+    if (pass.cull_mode == RenderCullMode::Clockwise) state |= BGFX_STATE_CULL_CW;
+    if (pass.cull_mode == RenderCullMode::CounterClockwise ||
+        pass.cull_mode == RenderCullMode::Backface) state |= BGFX_STATE_CULL_CCW;
+    if (pass.alpha_blend) {
+        state |= BGFX_STATE_BLEND_FUNC(
+            blendFactorState(pass.source_blend),
+            blendFactorState(pass.destination_blend));
+    }
+    return state;
+}
+
+uint32_t stencilStateForGrayBubblePass(const GrayBubblePassState& pass) {
+    return BGFX_STENCIL_FUNC_REF(pass.stencil_reference) |
+           BGFX_STENCIL_FUNC_RMASK(0xff) |
+           stencilTestState(pass.stencil_test_function) |
+           stencilFailOp(pass.stencil_fail_action) |
+           stencilZFailOp(pass.stencil_z_fail_action) |
+           stencilPassOp(pass.stencil_pass_action);
+}
+
 std::string shortText(const std::string& value, size_t max_chars) {
     if (value.size() <= max_chars) return value;
     if (max_chars <= 3) return value.substr(0, max_chars);
@@ -709,6 +739,7 @@ bool BgfxRenderer::init(const RendererInit& init) {
     s_color_lut_ = bgfx::createUniform("s_colorLut", bgfx::UniformType::Sampler);
     s_shadow_map_ = bgfx::createUniform("s_shadowMap", bgfx::UniformType::Sampler);
     u_shadow_matrix_ = bgfx::createUniform("u_shadowMatrix", bgfx::UniformType::Mat4);
+    u_skin_bones_ = bgfx::createUniform("u_skinBones", bgfx::UniformType::Mat4, 64);
     u_shadow_params_ = bgfx::createUniform("u_shadowParams", bgfx::UniformType::Vec4);
     u_shadow_bias_params_ = bgfx::createUniform("u_shadowBiasParams", bgfx::UniformType::Vec4);
     u_shadow_light_dir_ = bgfx::createUniform("u_shadowLightDir", bgfx::UniformType::Vec4);
@@ -776,6 +807,8 @@ bool BgfxRenderer::init(const RendererInit& init) {
     basic_two_layer_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_basic_two_layer.sc.bin");
     alpha_as_alpha_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_alpha_as_alpha.sc.bin");
     alpha_uv_scroll_program_ = loadProgram("vs_uv_scroll_alpha.sc.bin", "fs_uv_scroll_alpha.sc.bin");
+    basic_skinned_program_ = loadProgram("vs_basic_skinned.sc.bin", "fs_basic.sc.bin");
+    alpha_uv_scroll_skinned_program_ = loadProgram("vs_uv_scroll_alpha_skinned.sc.bin", "fs_uv_scroll_alpha.sc.bin");
     legopp_program_ = loadProgram("vs_lu_lit_mesh.sc.bin", "fs_legopp_lighting.sc.bin");
     legopp_no_ambient_program_ = loadProgram("vs_lu_lit_mesh_no_ambient.sc.bin", "fs_legopp_lighting.sc.bin");
     legopp_emissive_program_ = loadProgram("vs_lu_lit_mesh.sc.bin", "fs_legopp_emissive.sc.bin");
@@ -798,6 +831,8 @@ bool BgfxRenderer::init(const RendererInit& init) {
     terrain_diffuse_map_only_program_ = loadProgram("vs_terrain_basic.sc.bin", "fs_terrain_diffuse_only.sc.bin");
     brick_water_program_ = loadProgram("vs_brick_water.sc.bin", "fs_brick_water.sc.bin");
     gray_bubble_ghost_program_ = loadProgram("vs_gray_bubble_ghost.sc.bin", "fs_gray_bubble_ghost.sc.bin");
+    gray_bubble_fill_program_ = loadProgram("vs_gray_bubble_object.sc.bin", "fs_gray_bubble_fill.sc.bin");
+    gray_bubble_color_program_ = loadProgram("vs_fullscreen.sc.bin", "fs_gray_bubble_color.sc.bin");
     shadow_depth_program_ = loadProgram("vs_shadow_depth.sc.bin", "fs_shadow_depth.sc.bin");
     bloom_program_ = loadProgram("vs_fullscreen.sc.bin", "fs_bloom.sc.bin");
     gtao_program_ = loadProgram("vs_fullscreen.sc.bin", "fs_gtao.sc.bin");
@@ -813,6 +848,8 @@ bool BgfxRenderer::init(const RendererInit& init) {
         !bgfx::isValid(basic_two_layer_program_) ||
         !bgfx::isValid(alpha_as_alpha_program_) ||
         !bgfx::isValid(alpha_uv_scroll_program_) ||
+        !bgfx::isValid(basic_skinned_program_) ||
+        !bgfx::isValid(alpha_uv_scroll_skinned_program_) ||
         !bgfx::isValid(legopp_program_) ||
         !bgfx::isValid(legopp_no_ambient_program_) ||
         !bgfx::isValid(legopp_emissive_program_) ||
@@ -835,6 +872,8 @@ bool BgfxRenderer::init(const RendererInit& init) {
         !bgfx::isValid(terrain_diffuse_map_only_program_) ||
         !bgfx::isValid(brick_water_program_) ||
         !bgfx::isValid(gray_bubble_ghost_program_) ||
+        !bgfx::isValid(gray_bubble_fill_program_) ||
+        !bgfx::isValid(gray_bubble_color_program_) ||
         !bgfx::isValid(shadow_depth_program_) ||
         !bgfx::isValid(bloom_program_) ||
         !bgfx::isValid(gtao_program_) ||
@@ -882,6 +921,8 @@ void BgfxRenderer::shutdown() {
     if (bgfx::isValid(basic_two_layer_program_)) bgfx::destroy(basic_two_layer_program_);
     if (bgfx::isValid(alpha_as_alpha_program_)) bgfx::destroy(alpha_as_alpha_program_);
     if (bgfx::isValid(alpha_uv_scroll_program_)) bgfx::destroy(alpha_uv_scroll_program_);
+    if (bgfx::isValid(basic_skinned_program_)) bgfx::destroy(basic_skinned_program_);
+    if (bgfx::isValid(alpha_uv_scroll_skinned_program_)) bgfx::destroy(alpha_uv_scroll_skinned_program_);
     if (bgfx::isValid(legopp_program_)) bgfx::destroy(legopp_program_);
     if (bgfx::isValid(legopp_no_ambient_program_)) bgfx::destroy(legopp_no_ambient_program_);
     if (bgfx::isValid(legopp_emissive_program_)) bgfx::destroy(legopp_emissive_program_);
@@ -904,6 +945,8 @@ void BgfxRenderer::shutdown() {
     if (bgfx::isValid(terrain_diffuse_map_only_program_)) bgfx::destroy(terrain_diffuse_map_only_program_);
     if (bgfx::isValid(brick_water_program_)) bgfx::destroy(brick_water_program_);
     if (bgfx::isValid(gray_bubble_ghost_program_)) bgfx::destroy(gray_bubble_ghost_program_);
+    if (bgfx::isValid(gray_bubble_fill_program_)) bgfx::destroy(gray_bubble_fill_program_);
+    if (bgfx::isValid(gray_bubble_color_program_)) bgfx::destroy(gray_bubble_color_program_);
     if (bgfx::isValid(shadow_depth_program_)) bgfx::destroy(shadow_depth_program_);
     if (bgfx::isValid(bloom_program_)) bgfx::destroy(bloom_program_);
     if (bgfx::isValid(gtao_program_)) bgfx::destroy(gtao_program_);
@@ -926,6 +969,7 @@ void BgfxRenderer::shutdown() {
     if (bgfx::isValid(s_color_lut_)) bgfx::destroy(s_color_lut_);
     if (bgfx::isValid(s_shadow_map_)) bgfx::destroy(s_shadow_map_);
     if (bgfx::isValid(u_shadow_matrix_)) bgfx::destroy(u_shadow_matrix_);
+    if (bgfx::isValid(u_skin_bones_)) bgfx::destroy(u_skin_bones_);
     if (bgfx::isValid(u_shadow_params_)) bgfx::destroy(u_shadow_params_);
     if (bgfx::isValid(u_shadow_bias_params_)) bgfx::destroy(u_shadow_bias_params_);
     if (bgfx::isValid(u_shadow_light_dir_)) bgfx::destroy(u_shadow_light_dir_);
@@ -1036,6 +1080,11 @@ void BgfxRenderer::loadWorld(const RenderWorld& world) {
                 v.bitangent.x, v.bitangent.y, v.bitangent.z,
                 v.uv.x, v.uv.y,
                 v.uv2.x, v.uv2.y,
+                static_cast<float>(v.bone_indices[0]),
+                static_cast<float>(v.bone_indices[1]),
+                static_cast<float>(v.bone_indices[2]),
+                static_cast<float>(v.bone_indices[3]),
+                v.bone_weights[0], v.bone_weights[1], v.bone_weights[2], v.bone_weights[3],
                 v.color_rgba8
             });
         }
@@ -1260,6 +1309,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
     } else {
         bgfx::setViewFrameBuffer(kViewWorld, BGFX_INVALID_HANDLE);
     }
+    bgfx::setViewMode(kViewWorld, bgfx::ViewMode::Sequential);
     if (post_enabled && reflection_mask_enabled && ensureReflectionMaskTarget()) {
         bgfx::setViewFrameBuffer(kViewReflectionMask, reflection_mask_framebuffer_);
     } else {
@@ -1650,6 +1700,51 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
         bgfx::setUniform(u_lu_bbb_light_dir2_, bbb_light_dir2);
         bgfx::setUniform(u_lu_bbb_light_color1_, bbb_light_color1);
         bgfx::setUniform(u_lu_bbb_light_color2_, bbb_light_color2);
+
+        std::array<float, 64 * 16> skin_bones{};
+        for (size_t bone = 0; bone < 64; ++bone) {
+            skin_bones[bone * 16 + 0] = 1.0f;
+            skin_bones[bone * 16 + 5] = 1.0f;
+            skin_bones[bone * 16 + 10] = 1.0f;
+            skin_bones[bone * 16 + 15] = 1.0f;
+        }
+        bgfx::setUniform(u_skin_bones_, skin_bones.data(), 64);
+
+        if (mesh.material.shader_family == LegacyShaderFamily::GrayBubbleStencil) {
+            bgfx::TransientVertexBuffer fullscreen;
+            constexpr uint32_t fullscreen_vertex_count = 3;
+            if (bgfx::getAvailTransientVertexBuffer(fullscreen_vertex_count, PostVertex::layout) >= fullscreen_vertex_count) {
+                bgfx::allocTransientVertexBuffer(&fullscreen, fullscreen_vertex_count, PostVertex::layout);
+                auto* verts = reinterpret_cast<PostVertex*>(fullscreen.data);
+                verts[0] = {-1.0f, -1.0f, 0.0f, 0.0f, 1.0f};
+                verts[1] = { 3.0f, -1.0f, 0.0f, 2.0f, 1.0f};
+                verts[2] = {-1.0f,  3.0f, 0.0f, 0.0f,-1.0f};
+
+                const auto bind_object = [&]() {
+                    bgfx::setTransform(identity_mtx);
+                    bgfx::setVertexBuffer(0, mesh.vertex_buffer);
+                    bgfx::setIndexBuffer(mesh.index_buffer);
+                };
+                for (const GrayBubblePassState& pass : grayBubblePassPlan()) {
+                    bgfx::ProgramHandle program = gray_bubble_color_program_;
+                    if (pass.geometry == GrayBubblePassGeometry::Fullscreen) {
+                        bgfx::setVertexBuffer(0, &fullscreen);
+                    } else {
+                        bind_object();
+                        if (pass.geometry == GrayBubblePassGeometry::ObjectStencil) {
+                            program = gray_bubble_fill_program_;
+                        } else {
+                            program = gray_bubble_ghost_program_;
+                            bgfx::setTexture(0, s_diffuse_, mesh.texture, mesh.texture_sampler_flags);
+                        }
+                    }
+                    bgfx::setState(renderStateForGrayBubblePass(pass));
+                    bgfx::setStencil(stencilStateForGrayBubblePass(pass));
+                    bgfx::submit(kViewWorld, program);
+                }
+                continue;
+            }
+        }
 
         bgfx::setState(renderStateForMaterial(mesh.material));
         bgfx::setStencil(stencilStateForMaterial(mesh.material));
@@ -2351,6 +2446,14 @@ void BgfxRenderer::captureGlobalReflectionProbe(float effect_time) {
 }
 
 bgfx::ProgramHandle BgfxRenderer::programForMaterial(const MaterialAsset& material) const {
+    if (material.lu_shader_requires_skinning) {
+        if (material.shader_family == LegacyShaderFamily::AlphaUvScroll) {
+            return bgfx::isValid(alpha_uv_scroll_skinned_program_)
+                ? alpha_uv_scroll_skinned_program_
+                : alpha_uv_scroll_program_;
+        }
+        return bgfx::isValid(basic_skinned_program_) ? basic_skinned_program_ : basic_program_;
+    }
     switch (material.shader_family) {
     case LegacyShaderFamily::Basic:
         return bgfx::isValid(basic_program_) ? basic_program_ : legacy_program_;
@@ -2403,6 +2506,8 @@ bgfx::ProgramHandle BgfxRenderer::programForMaterial(const MaterialAsset& materi
         return bgfx::isValid(brick_water_program_) ? brick_water_program_ : legacy_program_;
     case LegacyShaderFamily::GrayBubbleGhost:
         return bgfx::isValid(gray_bubble_ghost_program_) ? gray_bubble_ghost_program_ : legacy_program_;
+    case LegacyShaderFamily::GrayBubbleStencil:
+        return bgfx::isValid(gray_bubble_fill_program_) ? gray_bubble_fill_program_ : legacy_program_;
     case LegacyShaderFamily::Metallic:
         if (material.lu_shader_reflection_map.find("polished") != std::string::npos) {
             return bgfx::isValid(metallic_polished_program_) ? metallic_polished_program_ : metallic_brushed_program_;
@@ -3315,10 +3420,10 @@ void BgfxRenderer::drawGrid() {
     uint32_t idx = 0;
     for (int i = -kHalfLines; i <= kHalfLines; ++i) {
         float p = static_cast<float>(i) * kStep;
-        verts[idx++] = {-kHalfLines * kStep, 0, p, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
-        verts[idx++] = { kHalfLines * kStep, 0, p, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
-        verts[idx++] = {p, 0, -kHalfLines * kStep, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
-        verts[idx++] = {p, 0,  kHalfLines * kStep, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
+        verts[idx++] = {-kHalfLines * kStep, 0, p, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, kColor};
+        verts[idx++] = { kHalfLines * kStep, 0, p, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, kColor};
+        verts[idx++] = {p, 0, -kHalfLines * kStep, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, kColor};
+        verts[idx++] = {p, 0,  kHalfLines * kStep, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, kColor};
     }
 
     float diffuse[4] = {0.7f, 0.7f, 0.7f, 1.0f};

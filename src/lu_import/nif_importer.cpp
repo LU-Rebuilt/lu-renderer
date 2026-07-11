@@ -993,6 +993,7 @@ NifImportResult importNif(const NifImportOptions& options) {
             out.material.lu_shader_reflection_semantic = resolved_shader.policy.reflection_semantic;
             out.material.lu_shader_uses_uv_animation = resolved_shader.policy.uses_uv_animation;
             out.material.lu_shader_uses_alpha_animation = resolved_shader.policy.uses_alpha_animation;
+            out.material.lu_shader_requires_skinning = resolved_shader.policy.requires_skinning;
             out.material.nif_has_material_color_controller = nif_has_material_color_controller;
             out.material.nif_diffuse_texture_has_alpha_format =
                 mesh.material.diffuse_texture_has_alpha_format;

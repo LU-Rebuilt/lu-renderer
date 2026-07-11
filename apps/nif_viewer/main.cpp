@@ -404,6 +404,7 @@ const char* shaderFamilyName(LegacyShaderFamily family) {
     case LegacyShaderFamily::TerrainDiffuseMapOnly: return "terrain-diffuse-only";
     case LegacyShaderFamily::BrickWater: return "brick-water";
     case LegacyShaderFamily::GrayBubbleGhost: return "gray-bubble-ghost";
+    case LegacyShaderFamily::GrayBubbleStencil: return "gray-bubble-stencil";
     }
     return "?";
 }
@@ -582,6 +583,7 @@ void printShaderDiagnostics(const RenderWorld& world) {
             << " envSemantic=\"" << material.lu_shader_reflection_semantic << "\""
             << " uvAnim=" << boolText(material.lu_shader_uses_uv_animation)
             << " alphaAnim=" << boolText(material.lu_shader_uses_alpha_animation)
+            << " skinShader=" << boolText(material.lu_shader_requires_skinning)
             << " matCtrl=" << boolText(material.nif_has_material_color_controller)
             << " emCtrl=" << boolText(material.material_emissive_controller)
             << " emKeys=" << material.material_emissive_controller_keys.size()

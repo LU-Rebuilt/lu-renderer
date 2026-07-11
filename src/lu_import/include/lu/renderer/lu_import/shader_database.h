@@ -46,6 +46,7 @@ struct LuShaderPolicy {
     std::string reflection_semantic;
     bool uses_uv_animation = false;
     bool uses_alpha_animation = false;
+    bool requires_skinning = false;
     Vec2 uv_motion_layer1 = {0.0f, 0.0f};
     Vec2 uv_motion_layer2 = {0.0f, 0.0f};
     Vec4 glow_color = {0.0f, 1.0f, 1.0f, 1.0f};
