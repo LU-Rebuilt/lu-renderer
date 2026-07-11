@@ -854,6 +854,22 @@ void applyEffectiveNifRenderState(MaterialAsset& material, const LuShaderPolicy&
         }
     }
 
+    if (policy.shader_family == LegacyShaderFamily::GrayBubbleGhost) {
+        material.alpha_blend = true;
+        material.source_blend = 6;
+        material.destination_blend = 7;
+        material.depth_test = true;
+        material.depth_write = true;
+        material.cull_mode = RenderCullMode::Clockwise;
+        material.stencil_enabled = true;
+        material.stencil_fail_action = 0;
+        material.stencil_z_fail_action = 0;
+        material.stencil_pass_action = 2;
+        material.stencil_test_function = 7;
+        material.stencil_reference = 2;
+        material.stencil_read_mask = 0xff;
+    }
+
     material.lu_shader_uses_specular =
         policy.uses_specular &&
         (!material.nif_resolved_state.has_specular ||
@@ -1093,6 +1109,59 @@ NifImportResult importNif(const NifImportOptions& options) {
                     mesh.material.glow_texture_has_clamp_mode,
                     mesh.material.glow_texture_clamp_mode),
                 uv0_tiling);
+            const bool has_normal_slot = !mesh.material.normal_texture.empty();
+            const bool has_bump_slot = !mesh.material.bump_texture.empty();
+            const bool has_parallax_slot = !mesh.material.parallax_texture.empty();
+            const lu::assets::NifRenderShaderTexture* brick_water_normal = nullptr;
+            if (!has_normal_slot && !has_bump_slot && !has_parallax_slot &&
+                resolved_shader.policy.shader_family == LegacyShaderFamily::BrickWater) {
+                auto shader_texture = std::find_if(
+                    mesh.material.shader_textures.begin(), mesh.material.shader_textures.end(),
+                    [](const lu::assets::NifRenderShaderTexture& slot) { return slot.map_id == 0; });
+                if (shader_texture != mesh.material.shader_textures.end()) {
+                    brick_water_normal = &*shader_texture;
+                } else if (!mesh.material.shader_textures.empty()) {
+                    // NTMIndex addresses the authored shader-texture table; Map ID
+                    // is separate Gamebryo metadata and is not consistently zero.
+                    brick_water_normal = &mesh.material.shader_textures.front();
+                }
+            }
+            std::string authored_normal_texture;
+            bool normal_has_clamp_mode = false;
+            uint8_t normal_clamp_mode = 3;
+            if (has_normal_slot) {
+                authored_normal_texture = mesh.material.normal_texture;
+                normal_has_clamp_mode = mesh.material.normal_texture_has_clamp_mode;
+                normal_clamp_mode = mesh.material.normal_texture_clamp_mode;
+            } else if (has_bump_slot) {
+                authored_normal_texture = mesh.material.bump_texture;
+                normal_has_clamp_mode = mesh.material.bump_texture_has_clamp_mode;
+                normal_clamp_mode = mesh.material.bump_texture_clamp_mode;
+            } else if (has_parallax_slot) {
+                authored_normal_texture = mesh.material.parallax_texture;
+                normal_has_clamp_mode = mesh.material.parallax_texture_has_clamp_mode;
+                normal_clamp_mode = mesh.material.parallax_texture_clamp_mode;
+            } else if (brick_water_normal) {
+                authored_normal_texture = brick_water_normal->texture;
+                normal_has_clamp_mode = brick_water_normal->has_clamp_mode;
+                normal_clamp_mode = brick_water_normal->clamp_mode;
+            } else if (resolved_shader.policy.shader_family == LegacyShaderFamily::BrickWater &&
+                       mesh.material.source_textures.size() == 1) {
+                // BrickWater's sole client asset stores g_texNormal as an
+                // otherwise-unbound NiSourceTexture. The recovered FX declares
+                // NTM="normal", NTMIndex=0, so the sole candidate is authoritative.
+                authored_normal_texture = mesh.material.source_textures.front();
+            }
+            auto normal_texture_path = resolveTexturePath(
+                res_root, options.nif_path, authored_normal_texture);
+            if (!normal_texture_path.empty()) {
+                out.material.normal_texture_path = normal_texture_path.string();
+            }
+            out.material.normal_texture_address = allowRepeatForTiledUv(
+                textureAddressFromClampMode(
+                    normal_has_clamp_mode,
+                    normal_clamp_mode),
+                uv0_tiling);
             out.material.nif_vertex_colors_effective = nifVertexColorsAreEffective(out.material);
             out.material.lu_shader_uses_vertex_color =
                 resolved_shader.policy.uses_vertex_color &&
@@ -1119,6 +1188,8 @@ NifImportResult importNif(const NifImportOptions& options) {
                 Vertex rv;
                 rv.position = {v.position[0], v.position[1], v.position[2]};
                 rv.normal = {v.normal[0], v.normal[1], v.normal[2]};
+                rv.tangent = {v.tangent[0], v.tangent[1], v.tangent[2]};
+                rv.bitangent = {v.bitangent[0], v.bitangent[1], v.bitangent[2]};
                 rv.uv = applyTextureTransform(
                     {v.uv[0], v.uv[1]},
                     mesh.material.diffuse_texture_transform);

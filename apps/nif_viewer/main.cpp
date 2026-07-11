@@ -369,6 +369,7 @@ const char* portStatusName(lu::renderer::ShaderPortStatus status) {
     case lu::renderer::ShaderPortStatus::Placeholder: return "placeholder";
     case lu::renderer::ShaderPortStatus::Inferred: return "inferred";
     case lu::renderer::ShaderPortStatus::Verified: return "verified";
+    case lu::renderer::ShaderPortStatus::NotApplicable: return "not-applicable";
     }
     return "?";
 }
@@ -392,6 +393,17 @@ const char* shaderFamilyName(LegacyShaderFamily family) {
     case LegacyShaderFamily::OceanDistortUnlit: return "ocean-unlit";
     case LegacyShaderFamily::LegoppLighting: return "legopp";
     case LegacyShaderFamily::ClearPlastic: return "clear";
+    case LegacyShaderFamily::TvScreen: return "tv-screen";
+    case LegacyShaderFamily::HeadIcon: return "head-icon";
+    case LegacyShaderFamily::PowerupHeart: return "powerup-heart";
+    case LegacyShaderFamily::PowerupOrb: return "powerup-orb";
+    case LegacyShaderFamily::ModelFootprint: return "model-footprint";
+    case LegacyShaderFamily::Undefined: return "undefined";
+    case LegacyShaderFamily::OceanFlatSurf: return "ocean-flat";
+    case LegacyShaderFamily::TerrainTextureOnly: return "terrain-texture-only";
+    case LegacyShaderFamily::TerrainDiffuseMapOnly: return "terrain-diffuse-only";
+    case LegacyShaderFamily::BrickWater: return "brick-water";
+    case LegacyShaderFamily::GrayBubbleGhost: return "gray-bubble-ghost";
     }
     return "?";
 }
@@ -614,6 +626,7 @@ void printShaderDiagnostics(const RenderWorld& world) {
             << material.diffuse.z << "/" << material.diffuse.w
             << " texture=" << boolText(!material.diffuse_texture_path.empty())
             << " darkTex=" << boolText(!material.dark_texture_path.empty())
+            << " normalTex=" << boolText(!material.normal_texture_path.empty())
             << " lod=" << boolText(mesh.has_lod_range)
             << " skin=" << boolText(mesh.is_skinned);
         printMeshBounds(std::cout, computeMeshBounds(mesh));
@@ -629,6 +642,12 @@ void printShaderDiagnostics(const RenderWorld& world) {
             printTextureAddress(std::cout, "darkAddr", material.dark_texture_address);
             std::cout << " darkFile=\""
                       << std::filesystem::path(material.dark_texture_path).filename().string()
+                      << "\"";
+        }
+        if (!material.normal_texture_path.empty()) {
+            printTextureAddress(std::cout, "normalAddr", material.normal_texture_address);
+            std::cout << " normalFile=\""
+                      << std::filesystem::path(material.normal_texture_path).filename().string()
                       << "\"";
         }
         if (mesh.has_lod_range) {

@@ -56,9 +56,11 @@ private:
         bgfx::IndexBufferHandle index_buffer = BGFX_INVALID_HANDLE;
         bgfx::TextureHandle texture = BGFX_INVALID_HANDLE;
         bgfx::TextureHandle dark_texture = BGFX_INVALID_HANDLE;
+        bgfx::TextureHandle normal_texture = BGFX_INVALID_HANDLE;
         bgfx::TextureHandle reflection_texture = BGFX_INVALID_HANDLE;
         uint32_t texture_sampler_flags = 0;
         uint32_t dark_texture_sampler_flags = 0;
+        uint32_t normal_texture_sampler_flags = 0;
         std::string name;
         MaterialAsset material;
         uint32_t index_count = 0;
@@ -151,6 +153,17 @@ private:
     bgfx::ProgramHandle ocean_distort_unlit_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle ocean_distort_fx_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle clear_plastic_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle tv_screen_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle head_icon_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle powerup_heart_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle powerup_orb_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle model_footprint_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle undefined_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle ocean_flat_surf_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle terrain_texture_only_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle terrain_diffuse_map_only_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle brick_water_program_ = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle gray_bubble_ghost_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle shadow_depth_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle post_process_program_ = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle bloom_program_ = BGFX_INVALID_HANDLE;
@@ -161,6 +174,7 @@ private:
     bgfx::ProgramHandle view_normal_program_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_diffuse_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_dark_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle s_normal_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_lu_env_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_scene_color_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_scene_depth_ = BGFX_INVALID_HANDLE;

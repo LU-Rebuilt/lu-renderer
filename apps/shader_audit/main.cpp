@@ -101,6 +101,7 @@ struct FxCheckSummary {
     size_t missing_technique = 0;
     size_t unknown = 0;
     size_t not_checked = 0;
+    size_t not_applicable = 0;
 };
 
 struct SourceTechnique {
@@ -285,6 +286,7 @@ const char* sourceCheck(
     const std::string& source_technique,
     const std::string& port_status) {
     if (port_status == "inferred") return "inferred";
+    if (port_status == "not-applicable") return "not applicable";
     if (fx_root.empty()) return "not checked";
     if (source_file.empty() || source_file == "unknown" ||
         source_technique.empty() || source_technique == "unknown") {
@@ -313,6 +315,8 @@ void addFxCheck(FxCheckSummary& summary, const char* check) {
         ++summary.unknown;
     } else if (value == "not checked") {
         ++summary.not_checked;
+    } else if (value == "not applicable") {
+        ++summary.not_applicable;
     }
 }
 
@@ -362,6 +366,17 @@ const char* shaderFamilyName(lu::renderer::LegacyShaderFamily family) {
     case LegacyShaderFamily::OceanDistortUnlit: return "ocean-unlit";
     case LegacyShaderFamily::LegoppLighting: return "legopp";
     case LegacyShaderFamily::ClearPlastic: return "clear";
+    case LegacyShaderFamily::TvScreen: return "tv-screen";
+    case LegacyShaderFamily::HeadIcon: return "head-icon";
+    case LegacyShaderFamily::PowerupHeart: return "powerup-heart";
+    case LegacyShaderFamily::PowerupOrb: return "powerup-orb";
+    case LegacyShaderFamily::ModelFootprint: return "model-footprint";
+    case LegacyShaderFamily::Undefined: return "undefined";
+    case LegacyShaderFamily::OceanFlatSurf: return "ocean-flat";
+    case LegacyShaderFamily::TerrainTextureOnly: return "terrain-texture-only";
+    case LegacyShaderFamily::TerrainDiffuseMapOnly: return "terrain-diffuse-only";
+    case LegacyShaderFamily::BrickWater: return "brick-water";
+    case LegacyShaderFamily::GrayBubbleGhost: return "gray-bubble-ghost";
     }
     return "?";
 }
@@ -434,6 +449,7 @@ const char* portStatusName(lu::renderer::ShaderPortStatus status) {
     case ShaderPortStatus::Placeholder: return "placeholder";
     case ShaderPortStatus::Inferred: return "inferred";
     case ShaderPortStatus::Verified: return "verified";
+    case ShaderPortStatus::NotApplicable: return "not-applicable";
     }
     return "?";
 }
@@ -1077,6 +1093,7 @@ void printPerMeshRow(
               << ",detail=" << textureName(material.detail_texture_path)
               << ",gloss=" << textureName(material.gloss_texture_path)
               << ",glow=" << textureName(material.glow_texture_path)
+              << ",normal=" << textureName(material.normal_texture_path)
               << " | diffuse=" << material.diffuse.x << "/" << material.diffuse.y << "/"
               << material.diffuse.z << "/" << material.diffuse.w
               << ",emissive=" << material.emissive.x << "/" << material.emissive.y << "/"
@@ -2159,7 +2176,8 @@ int main(int argc, char** argv) {
               << " missingFile=" << fx_summary.missing_file
               << " missingTechnique=" << fx_summary.missing_technique
               << " unknown=" << fx_summary.unknown
-              << " notChecked=" << fx_summary.not_checked << "\n";
+              << " notChecked=" << fx_summary.not_checked
+              << " notApplicable=" << fx_summary.not_applicable << "\n";
     std::cout << "count | id/gv | label | variant | program | port | fxCheck | fx | technique | sourceNote | validationNote | alpha | alphaSemantic | cull | zwrite | resolved | source | metadata | multi | flags | emissive | samples\n";
     for (const auto& stats : sorted) {
         std::cout << stats.mesh_count

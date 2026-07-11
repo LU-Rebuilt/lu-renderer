@@ -476,6 +476,109 @@ int main() {
     expect(!basic_nl_policy.uses_reflection, "Basic NL ignores reflection");
     expect(basic_nl_policy.port_status == ShaderPortStatus::Verified, "Basic NL verified");
 
+    LuShaderInfo basic_nl_material{24, 32, "Basic NL Material"};
+    LuShaderPolicy basic_nl_material_policy = shaderPolicyFromInfo(basic_nl_material);
+    expect(basic_nl_material_policy.shader_family == LegacyShaderFamily::Basic, "Basic NL Material uses Basic program");
+    expect(basic_nl_material_policy.source_file == "BasicShaders.fx", "Basic NL Material source file");
+    expect(basic_nl_material_policy.source_technique == "Technique_Basic_Material_NoLighting", "Basic NL Material source technique");
+    expect(basic_nl_material_policy.uses_material_diffuse, "Basic NL Material uses material color");
+    expect(!basic_nl_material_policy.uses_lighting, "Basic NL Material is unlit");
+    expect(!basic_nl_material_policy.uses_fog, "recovered Basic techniques do not calculate fog");
+    expect(basic_nl_material_policy.port_status == ShaderPortStatus::Verified, "Basic NL Material verified");
+
+    LuShaderInfo basic_vc_nt_anim_alpha{34, 11, "VertColor_NoLight_NoTex_AnimAlpha"};
+    LuShaderPolicy basic_vc_nt_anim_alpha_policy = shaderPolicyFromInfo(basic_vc_nt_anim_alpha);
+    expect(basic_vc_nt_anim_alpha_policy.source_technique == "Technique_Basic_NoLighting_VertColor_NoTexture", "VC NT AnimAlpha source technique");
+    expect(basic_vc_nt_anim_alpha_policy.uses_vertex_color, "VC NT AnimAlpha uses vertex color");
+    expect(!basic_vc_nt_anim_alpha_policy.uses_texture, "VC NT AnimAlpha has no texture");
+    expect(basic_vc_nt_anim_alpha_policy.uses_alpha_animation, "VC NT AnimAlpha uses material alpha animation");
+    expect(basic_vc_nt_anim_alpha_policy.port_status == ShaderPortStatus::Verified, "VC NT AnimAlpha verified");
+
+    LuShaderInfo basic_experimental{42, 49, "Experimental Stub"};
+    LuShaderPolicy basic_experimental_policy = shaderPolicyFromInfo(basic_experimental);
+    expect(basic_experimental_policy.shader_family == LegacyShaderFamily::BasicLit, "Experimental uses lit Basic program");
+    expect(basic_experimental_policy.source_technique == "Technique_Experimental", "Experimental exact source technique");
+    expect(basic_experimental_policy.uses_vertex_color, "Experimental uses vertex color");
+    expect(basic_experimental_policy.uses_lighting, "Experimental uses directional and ambient lighting");
+    expect(!basic_experimental_policy.uses_fog, "Experimental source contains no fog");
+    expect(basic_experimental_policy.port_status == ShaderPortStatus::Verified, "Experimental source verified");
+
+    LuShaderInfo alpha_one_sided_nt{51, 58, "OneSidedAlpha NL VC NT"};
+    LuShaderPolicy alpha_one_sided_nt_policy = shaderPolicyFromInfo(alpha_one_sided_nt);
+    expect(alpha_one_sided_nt_policy.shader_family == LegacyShaderFamily::AlphaAsAlpha, "one-sided alpha NT uses AlphaAsAlpha program");
+    expect(alpha_one_sided_nt_policy.source_technique == "Technique_AlphaAsAlpha_NoLighting_VertColor_AlphaBlend_NoTexture", "one-sided alpha NT exact technique");
+    expect(alpha_one_sided_nt_policy.alpha_mode == RenderAlphaMode::AlphaBlend, "one-sided alpha NT blends");
+    expect(alpha_one_sided_nt_policy.depth_write, "source one-sided alpha NT leaves depth writes enabled");
+    expect(alpha_one_sided_nt_policy.cull_mode == RenderCullMode::Backface, "mapShaders one-sided contract culls backfaces");
+    expect(alpha_one_sided_nt_policy.port_status == ShaderPortStatus::Verified, "one-sided alpha NT verified");
+
+    LuShaderInfo basic_anim_alpha{59, 68, "OneSidedAlpha NL AnimAlpha"};
+    LuShaderPolicy basic_anim_alpha_policy = shaderPolicyFromInfo(basic_anim_alpha);
+    expect(basic_anim_alpha_policy.shader_family == LegacyShaderFamily::Basic, "NL AnimAlpha uses Basic program");
+    expect(basic_anim_alpha_policy.source_technique == "Technique_Basic_NoLighting_AnimAlpha", "NL AnimAlpha exact technique");
+    expect(basic_anim_alpha_policy.uses_alpha_animation, "NL AnimAlpha uses animated material alpha");
+    expect(!basic_anim_alpha_policy.uses_lighting, "NL AnimAlpha is unlit");
+    expect(basic_anim_alpha_policy.port_status == ShaderPortStatus::Verified, "NL AnimAlpha verified");
+
+    LuShaderInfo basic_skinned{55, 62, "OneSidedAlpha NL VC Skinned"};
+    LuShaderPolicy basic_skinned_policy = shaderPolicyFromInfo(basic_skinned);
+    expect(basic_skinned_policy.source_technique == "Technique_Basic_NoLighting_VertColor_Skinned", "skinned Basic source technique recovered");
+    expect(basic_skinned_policy.source_status_note.find("bone-matrix skinning") != std::string::npos, "skinned Basic records engine gap");
+    expect(basic_skinned_policy.port_status == ShaderPortStatus::Unported, "skinned Basic remains unported until runtime skinning exists");
+
+    LuShaderInfo tv_screen{8, 17, "TV Screen"};
+    LuShaderPolicy tv_screen_policy = shaderPolicyFromInfo(tv_screen);
+    expect(tv_screen_policy.shader_family == LegacyShaderFamily::TvScreen, "TV Screen uses its source-specific program");
+    expect(tv_screen_policy.source_file == "TVScreen.fx", "TV Screen source file");
+    expect(tv_screen_policy.source_technique == "Technique_TVScreen", "TV Screen exact technique");
+    expect(tv_screen_policy.alpha_mode == RenderAlphaMode::AlphaBlend, "TV Screen source enables alpha blending");
+    expect(tv_screen_policy.depth_write, "TV Screen source does not disable depth writes");
+    expect(tv_screen_policy.uses_uv_animation, "TV Screen consumes animated source offsets");
+    expect(tv_screen_policy.port_status == ShaderPortStatus::Verified, "TV Screen verified");
+
+    LuShaderInfo head_icon{10, 18, "Head Icon"};
+    LuShaderPolicy head_icon_policy = shaderPolicyFromInfo(head_icon);
+    expect(head_icon_policy.shader_family == LegacyShaderFamily::HeadIcon, "Head Icon uses its source-specific program");
+    expect(head_icon_policy.source_technique == "Technique_HeadIcon", "Head Icon exact technique");
+    expect(head_icon_policy.cull_mode == RenderCullMode::Clockwise, "Head Icon source culls clockwise");
+    expect(!head_icon_policy.uses_texture, "Head Icon source is untextured");
+    expect(head_icon_policy.port_status == ShaderPortStatus::Verified, "Head Icon verified");
+
+    LuShaderInfo heart_powerup{12, 19, "Powerups"};
+    LuShaderPolicy heart_powerup_policy = shaderPolicyFromInfo(heart_powerup);
+    expect(heart_powerup_policy.shader_family == LegacyShaderFamily::PowerupHeart, "Powerups row uses HeartPowerup program");
+    expect(heart_powerup_policy.source_file == "Powerups.fx", "Powerups source file");
+    expect(heart_powerup_policy.source_technique == "Technique_HeartPowerup", "Powerups exact technique");
+    expect(heart_powerup_policy.cull_mode == RenderCullMode::Clockwise, "Heart powerup culls clockwise");
+    expect(heart_powerup_policy.depth_write, "Heart powerup writes depth");
+    expect(heart_powerup_policy.port_status == ShaderPortStatus::Verified, "Heart powerup verified");
+
+    LuShaderInfo orb_powerup{16, 20, "Orb"};
+    LuShaderPolicy orb_powerup_policy = shaderPolicyFromInfo(orb_powerup);
+    expect(orb_powerup_policy.shader_family == LegacyShaderFamily::PowerupOrb, "Orb uses OrbPowerup program");
+    expect(orb_powerup_policy.source_technique == "Technique_OrbPowerup", "Orb exact technique");
+    expect(orb_powerup_policy.alpha_mode == RenderAlphaMode::AlphaBlend, "Orb source enables alpha blending");
+    expect(orb_powerup_policy.depth_write, "Orb source keeps depth writes");
+    expect(orb_powerup_policy.cull_mode == RenderCullMode::TwoSided, "Orb source disables culling");
+    expect(orb_powerup_policy.uses_reflection, "Orb source samples its environment cube");
+    expect(orb_powerup_policy.port_status == ShaderPortStatus::Verified, "Orb verified");
+
+    LuShaderInfo model_footprint{18, 21, "Model Footprint"};
+    LuShaderPolicy model_footprint_policy = shaderPolicyFromInfo(model_footprint);
+    expect(model_footprint_policy.shader_family == LegacyShaderFamily::ModelFootprint, "Model Footprint uses source-specific program");
+    expect(model_footprint_policy.source_technique == "Technique_Model_Footprint", "Model Footprint exact technique");
+    expect(model_footprint_policy.uses_vertex_color, "Model Footprint uses vertex tint");
+    expect(model_footprint_policy.uses_material_diffuse, "Model Footprint uses invalid-placement material tint");
+    expect(!model_footprint_policy.uses_texture, "Model Footprint is untextured");
+    expect(model_footprint_policy.port_status == ShaderPortStatus::Verified, "Model Footprint verified");
+
+    LuShaderInfo undefined_shader{15, 14, "Undefined"};
+    LuShaderPolicy undefined_policy = shaderPolicyFromInfo(undefined_shader);
+    expect(undefined_policy.shader_family == LegacyShaderFamily::Undefined, "Undefined uses red diagnostic source program");
+    expect(undefined_policy.source_technique == "Technique_Undefined", "Undefined exact technique");
+    expect(!undefined_policy.uses_texture, "Undefined pixel shader returns constant red");
+    expect(undefined_policy.port_status == ShaderPortStatus::Verified, "Undefined source verified");
+
     LuShaderInfo basic_nl_uvanim{28, 36, "Basic NL UVAnim"};
     LuShaderPolicy basic_nl_uvanim_policy = shaderPolicyFromInfo(basic_nl_uvanim);
     expect(basic_nl_uvanim_policy.shader_family == LegacyShaderFamily::Basic, "Basic NL UVAnim uses Basic program");
@@ -521,22 +624,24 @@ int main() {
     LuShaderInfo scrolling_no_fog{71, 81, "ScrollingUV NL AnimAlpha NoFog"};
     LuShaderPolicy scrolling_no_fog_policy = shaderPolicyFromInfo(scrolling_no_fog);
     expect(scrolling_no_fog_policy.shader_family == LegacyShaderFamily::AlphaUvScroll, "Scrolling NoFog uses alpha uv scroll program");
-    expect(scrolling_no_fog_policy.alpha_mode == RenderAlphaMode::AlphaBlend, "Scrolling NoFog anim alpha blends");
-    expect(scrolling_no_fog_policy.source_file == "inferred", "Scrolling NoFog inferred source marker");
-    expect(scrolling_no_fog_policy.source_technique == "ScrollingUV NL AnimAlpha NoFog", "Scrolling NoFog inferred source technique");
+    expect(scrolling_no_fog_policy.alpha_mode == RenderAlphaMode::Opaque, "Scrolling NoFog leaves blending to authored NiAlpha state");
+    expect(scrolling_no_fog_policy.depth_write, "Scrolling NoFog leaves depth writes to authored NiZ state");
+    expect(scrolling_no_fog_policy.source_file == "AlphaAsAlpha.fx", "Scrolling NoFog source file");
+    expect(scrolling_no_fog_policy.source_technique == "Technique_AlphaAsAlpha_UVScrolling_SimpleV_NoLighting_AlphaAnim", "Scrolling NoFog exact source technique");
+    expect(scrolling_no_fog_policy.uses_vertex_color, "source technique accepts vertex color and falls back to white when absent");
     expect(!scrolling_no_fog_policy.uses_lighting, "Scrolling NoFog is no-light");
     expect(!scrolling_no_fog_policy.uses_fog, "Scrolling NoFog ignores fog");
     expect(!scrolling_no_fog_policy.uses_specular, "Scrolling NoFog ignores specular");
     expect(!scrolling_no_fog_policy.uses_reflection, "Scrolling NoFog ignores reflection");
     expect(scrolling_no_fog_policy.uses_uv_animation, "Scrolling NoFog uses UV animation");
     expect(scrolling_no_fog_policy.uses_alpha_animation, "Scrolling NoFog uses alpha animation");
-    expect(scrolling_no_fog_policy.port_status == ShaderPortStatus::Inferred, "Scrolling NoFog is inferred from label tokens");
+    expect(scrolling_no_fog_policy.port_status == ShaderPortStatus::Verified, "Scrolling NoFog source verified");
 
     LuShaderInfo opaque_no_fog{72, 82, "Opaque NL VC NT NoFog"};
     LuShaderPolicy opaque_no_fog_policy = shaderPolicyFromInfo(opaque_no_fog);
     expect(opaque_no_fog_policy.shader_family == LegacyShaderFamily::Basic, "NoFog VC NT uses Basic program");
-    expect(opaque_no_fog_policy.source_file == "inferred", "NoFog VC NT inferred source marker");
-    expect(opaque_no_fog_policy.source_technique == "Opaque NL VC NT NoFog", "NoFog VC NT inferred source technique");
+    expect(opaque_no_fog_policy.source_file == "BasicShaders.fx", "NoFog VC NT source file");
+    expect(opaque_no_fog_policy.source_technique == "Technique_Basic_NoLighting_VertColor_NoTexture", "NoFog VC NT exact source technique");
     expect(opaque_no_fog_policy.uses_vertex_color, "NoFog VC NT uses vertex color");
     expect(!opaque_no_fog_policy.uses_texture, "NoFog VC NT ignores texture");
     expect(!opaque_no_fog_policy.uses_lighting, "NoFog VC NT is no-light");
@@ -544,57 +649,57 @@ int main() {
     expect(!opaque_no_fog_policy.uses_specular, "NoFog VC NT ignores specular");
     expect(!opaque_no_fog_policy.uses_reflection, "NoFog VC NT ignores reflection");
     expect(opaque_no_fog_policy.reflection_map.empty(), "NoFog VC NT has no reflection map");
-    expect(opaque_no_fog_policy.port_status == ShaderPortStatus::Inferred, "NoFog VC NT is inferred from label tokens");
+    expect(opaque_no_fog_policy.port_status == ShaderPortStatus::Verified, "NoFog VC NT source verified");
 
     LuShaderInfo opaque_nl_no_fog{73, 83, "Opaque NL NoFog"};
     LuShaderPolicy opaque_nl_no_fog_policy = shaderPolicyFromInfo(opaque_nl_no_fog);
     expect(opaque_nl_no_fog_policy.shader_family == LegacyShaderFamily::Basic, "NoFog NL uses Basic program");
-    expect(opaque_nl_no_fog_policy.source_file == "inferred", "NoFog NL inferred source marker");
-    expect(opaque_nl_no_fog_policy.source_technique == "Opaque NL NoFog", "NoFog NL inferred source technique");
+    expect(opaque_nl_no_fog_policy.source_file == "BasicShaders.fx", "NoFog NL source file");
+    expect(opaque_nl_no_fog_policy.source_technique == "Technique_Basic_NoLighting", "NoFog NL exact source technique");
     expect(!opaque_nl_no_fog_policy.uses_lighting, "NoFog NL is no-light");
     expect(!opaque_nl_no_fog_policy.uses_fog, "NoFog NL ignores fog");
     expect(!opaque_nl_no_fog_policy.uses_specular, "NoFog NL ignores specular");
     expect(!opaque_nl_no_fog_policy.uses_reflection, "NoFog NL ignores reflection");
-    expect(opaque_nl_no_fog_policy.port_status == ShaderPortStatus::Inferred, "NoFog NL is inferred from label tokens");
+    expect(opaque_nl_no_fog_policy.port_status == ShaderPortStatus::Verified, "NoFog NL source verified");
 
     LuShaderInfo opaque_vc_no_fog{74, 84, "Opaque NL VC NoFog"};
     LuShaderPolicy opaque_vc_no_fog_policy = shaderPolicyFromInfo(opaque_vc_no_fog);
     expect(opaque_vc_no_fog_policy.shader_family == LegacyShaderFamily::Basic, "NoFog VC uses Basic program");
-    expect(opaque_vc_no_fog_policy.source_file == "inferred", "NoFog VC inferred source marker");
-    expect(opaque_vc_no_fog_policy.source_technique == "Opaque NL VC NoFog", "NoFog VC inferred source technique");
+    expect(opaque_vc_no_fog_policy.source_file == "BasicShaders.fx", "NoFog VC source file");
+    expect(opaque_vc_no_fog_policy.source_technique == "Technique_Basic_NoLighting_VertColor", "NoFog VC exact source technique");
     expect(opaque_vc_no_fog_policy.uses_vertex_color, "NoFog VC uses vertex color");
     expect(opaque_vc_no_fog_policy.uses_texture, "NoFog VC uses texture");
     expect(!opaque_vc_no_fog_policy.uses_lighting, "NoFog VC is no-light");
     expect(!opaque_vc_no_fog_policy.uses_fog, "NoFog VC ignores fog");
     expect(!opaque_vc_no_fog_policy.uses_specular, "NoFog VC ignores specular");
     expect(!opaque_vc_no_fog_policy.uses_reflection, "NoFog VC ignores reflection");
-    expect(opaque_vc_no_fog_policy.port_status == ShaderPortStatus::Inferred, "NoFog VC is inferred from label tokens");
+    expect(opaque_vc_no_fog_policy.port_status == ShaderPortStatus::Verified, "NoFog VC source verified");
 
     LuShaderInfo opaque_vc_nt_lit_no_fog{75, 85, "Opaque VC NT NoFog"};
     LuShaderPolicy opaque_vc_nt_lit_no_fog_policy = shaderPolicyFromInfo(opaque_vc_nt_lit_no_fog);
     expect(opaque_vc_nt_lit_no_fog_policy.shader_family == LegacyShaderFamily::BasicLit, "NoFog VC NT lit uses BasicLit program");
-    expect(opaque_vc_nt_lit_no_fog_policy.source_file == "inferred", "NoFog VC NT lit inferred source marker");
-    expect(opaque_vc_nt_lit_no_fog_policy.source_technique == "Opaque VC NT NoFog", "NoFog VC NT lit inferred source technique");
+    expect(opaque_vc_nt_lit_no_fog_policy.source_file == "BasicShaders.fx", "NoFog VC NT lit source file");
+    expect(opaque_vc_nt_lit_no_fog_policy.source_technique == "Technique_Basic_Lighting_VertColor_NoTexture", "NoFog VC NT lit exact source technique");
     expect(opaque_vc_nt_lit_no_fog_policy.uses_vertex_color, "NoFog VC NT lit uses vertex color");
     expect(!opaque_vc_nt_lit_no_fog_policy.uses_texture, "NoFog VC NT lit ignores texture");
     expect(opaque_vc_nt_lit_no_fog_policy.uses_lighting, "NoFog VC NT lit keeps lighting");
     expect(!opaque_vc_nt_lit_no_fog_policy.uses_fog, "NoFog VC NT lit ignores fog");
     expect(!opaque_vc_nt_lit_no_fog_policy.uses_specular, "NoFog VC NT lit ignores specular");
     expect(!opaque_vc_nt_lit_no_fog_policy.uses_reflection, "NoFog VC NT lit ignores reflection");
-    expect(opaque_vc_nt_lit_no_fog_policy.port_status == ShaderPortStatus::Inferred, "NoFog VC NT lit is inferred from label tokens");
+    expect(opaque_vc_nt_lit_no_fog_policy.port_status == ShaderPortStatus::Verified, "NoFog VC NT lit source verified");
 
     LuShaderInfo opaque_vc_lit_no_fog{76, 86, "Opaque VC NoFog"};
     LuShaderPolicy opaque_vc_lit_no_fog_policy = shaderPolicyFromInfo(opaque_vc_lit_no_fog);
     expect(opaque_vc_lit_no_fog_policy.shader_family == LegacyShaderFamily::BasicLit, "NoFog VC lit uses BasicLit program");
-    expect(opaque_vc_lit_no_fog_policy.source_file == "inferred", "NoFog VC lit inferred source marker");
-    expect(opaque_vc_lit_no_fog_policy.source_technique == "Opaque VC NoFog", "NoFog VC lit inferred source technique");
+    expect(opaque_vc_lit_no_fog_policy.source_file == "BasicShaders.fx", "NoFog VC lit source file");
+    expect(opaque_vc_lit_no_fog_policy.source_technique == "Technique_Basic_Lighting_VertColor", "NoFog VC lit exact source technique");
     expect(opaque_vc_lit_no_fog_policy.uses_vertex_color, "NoFog VC lit uses vertex color");
     expect(opaque_vc_lit_no_fog_policy.uses_texture, "NoFog VC lit uses texture");
     expect(opaque_vc_lit_no_fog_policy.uses_lighting, "NoFog VC lit keeps lighting");
     expect(!opaque_vc_lit_no_fog_policy.uses_fog, "NoFog VC lit ignores fog");
     expect(!opaque_vc_lit_no_fog_policy.uses_specular, "NoFog VC lit ignores specular");
     expect(!opaque_vc_lit_no_fog_policy.uses_reflection, "NoFog VC lit ignores reflection");
-    expect(opaque_vc_lit_no_fog_policy.port_status == ShaderPortStatus::Inferred, "NoFog VC lit is inferred from label tokens");
+    expect(opaque_vc_lit_no_fog_policy.port_status == ShaderPortStatus::Verified, "NoFog VC lit source verified");
 
     LuShaderInfo basic{84, 94, "Basic"};
     LuShaderPolicy basic_policy = shaderPolicyFromInfo(basic);
@@ -697,6 +802,56 @@ int main() {
     expect(terrain_rim_policy.source_technique == "Technique_TerrainMeshLighting_Rim", "Terrain rim source technique");
     expect(terrain_rim_policy.uses_vertex_color, "Terrain rim uses vertex color");
     expect(terrain_rim_policy.port_status == ShaderPortStatus::Verified, "Terrain rim verified");
+
+    LuShaderInfo terrain_mesh{4, 2, "Terrain Mesh"};
+    LuShaderPolicy terrain_mesh_policy = shaderPolicyFromInfo(terrain_mesh);
+    expect(terrain_mesh_policy.shader_family == LegacyShaderFamily::TerrainTextureOnly, "Terrain Mesh uses recovered terrain-only program");
+    expect(terrain_mesh_policy.source_file == "TerrainDiffuse.fx", "Terrain Mesh source file");
+    expect(terrain_mesh_policy.source_technique == "Technique_Terrain_Texture_Only", "Terrain Mesh closest recovered technique");
+    expect(terrain_mesh_policy.source_status_note.find("no generic Terrain Mesh") != std::string::npos, "Terrain Mesh records mapping ambiguity");
+    expect(!terrain_mesh_policy.uses_texture, "Terrain_Texture_Only source outputs terrain lighting without a map sample");
+    expect(terrain_mesh_policy.port_status == ShaderPortStatus::Inferred, "Terrain Mesh remains inferred without an exact mapShaders-named source technique");
+
+    LuShaderInfo brick_water{44, 54, "BrickWater"};
+    LuShaderPolicy brick_water_policy = shaderPolicyFromInfo(brick_water);
+    expect(brick_water_policy.shader_family == LegacyShaderFamily::BrickWater, "BrickWater uses its dedicated tangent-space program");
+    expect(brick_water_policy.source_file == "BrickWater.fx", "BrickWater source file");
+    expect(brick_water_policy.source_technique == "Technique_BrickWater", "BrickWater exact source technique");
+    expect(brick_water_policy.uses_vertex_color, "BrickWater multiplies authored vertex color");
+    expect(!brick_water_policy.uses_texture, "BrickWater does not sample the diffuse slot");
+    expect(brick_water_policy.uses_lighting, "BrickWater uses tangent-space lighting");
+    expect(brick_water_policy.uses_specular, "BrickWater uses source specular");
+    expect(!brick_water_policy.uses_reflection, "BrickWater source leaves its environment sample disabled");
+    expect(brick_water_policy.port_status == ShaderPortStatus::Verified, "BrickWater source verified");
+
+    LuShaderInfo gray_bubble_ghost{69, 79, "Post Process Gray Bubble Interior Ghost"};
+    LuShaderPolicy gray_bubble_ghost_policy = shaderPolicyFromInfo(gray_bubble_ghost);
+    expect(gray_bubble_ghost_policy.shader_family == LegacyShaderFamily::GrayBubbleGhost, "Gray Bubble ghost uses dedicated program");
+    expect(gray_bubble_ghost_policy.source_file == "GrayBubble.fx", "Gray Bubble ghost source file");
+    expect(gray_bubble_ghost_policy.source_technique == "Technique_GrayBubble_Ghost", "Gray Bubble ghost exact technique");
+    expect(!gray_bubble_ghost_policy.uses_ni_render_state, "Gray Bubble ghost ignores Ni render state");
+    expect(gray_bubble_ghost_policy.force_alpha_blend, "Gray Bubble ghost forces source alpha blend");
+    expect(gray_bubble_ghost_policy.cull_mode == RenderCullMode::Clockwise, "Gray Bubble ghost source cull mode");
+    expect(gray_bubble_ghost_policy.port_status == ShaderPortStatus::Verified, "Gray Bubble ghost source verified");
+
+    LuShaderInfo ocean_flat{68, 78, "Flat Surf"};
+    LuShaderPolicy ocean_flat_policy = shaderPolicyFromInfo(ocean_flat);
+    expect(ocean_flat_policy.shader_family == LegacyShaderFamily::OceanFlatSurf, "Flat Surf uses Ocean flat-surface program");
+    expect(ocean_flat_policy.source_file == "Ocean.fx", "Flat Surf source file");
+    expect(ocean_flat_policy.source_technique == "Technique_Ocean_FlatSurf", "Flat Surf exact source technique");
+    expect(ocean_flat_policy.uses_vertex_color, "Flat Surf modulates lighting by vertex color");
+    expect(ocean_flat_policy.uses_uv_animation, "Flat Surf applies independent texture transforms");
+    expect(ocean_flat_policy.alpha_semantic == ShaderAlphaSemantic::OutputAlpha, "Flat Surf takes output alpha from dark texture");
+    expect(ocean_flat_policy.port_status == ShaderPortStatus::Verified, "Flat Surf verified");
+
+    LuShaderInfo terrain_diffuse_only{87, 97, "Terrain Diffuse Map Only"};
+    LuShaderPolicy terrain_diffuse_only_policy = shaderPolicyFromInfo(terrain_diffuse_only);
+    expect(terrain_diffuse_only_policy.shader_family == LegacyShaderFamily::TerrainDiffuseMapOnly, "Terrain diffuse-only program");
+    expect(terrain_diffuse_only_policy.source_file == "TerrainDiffuse.fx", "Terrain diffuse-only source file");
+    expect(terrain_diffuse_only_policy.source_technique == "Technique_TerrainDiffuseMap_Only", "Terrain diffuse-only exact technique");
+    expect(terrain_diffuse_only_policy.uses_texture, "Terrain diffuse-only samples diffuse map");
+    expect(terrain_diffuse_only_policy.uses_lighting, "Terrain diffuse-only applies terrain vertex lighting");
+    expect(terrain_diffuse_only_policy.port_status == ShaderPortStatus::Verified, "Terrain diffuse-only verified");
 
     LuShaderInfo lego_emissive{46, 53, "LEGO-Emissive"};
     LuShaderPolicy lego_emissive_policy = shaderPolicyFromInfo(lego_emissive);
@@ -893,7 +1048,7 @@ int main() {
            darkling_glint_policy.shiny_glint_color.w == 1.0f, "Shiny glint uses source default color");
     expect(darkling_glint_policy.source_status_note.find("no distinct Darkling Shiny Glint technique") != std::string::npos,
         "Shiny glint records missing darkling-specific source technique");
-    expect(darkling_glint_policy.port_status == ShaderPortStatus::Verified, "Shiny glint source math verified");
+    expect(darkling_glint_policy.port_status == ShaderPortStatus::Inferred, "Darkling shiny glint remains inferred without an exact source technique");
 
     LuShaderInfo darkling_spec_glint{93, 103, "Darkling /w Specular Shiny Glint"};
     LuShaderPolicy darkling_spec_glint_policy = shaderPolicyFromInfo(darkling_spec_glint);
@@ -901,7 +1056,7 @@ int main() {
     expect(darkling_spec_glint_policy.alpha_semantic == ShaderAlphaSemantic::OutputAlpha, "Spec shiny glint alpha is not darkling control data");
     expect(darkling_spec_glint_policy.source_status_note.find("no distinct Darkling Specular Shiny Glint technique") != std::string::npos,
         "Spec shiny glint records missing darkling-specific source technique");
-    expect(darkling_spec_glint_policy.port_status == ShaderPortStatus::Verified, "Spec shiny glint source math verified");
+    expect(darkling_spec_glint_policy.port_status == ShaderPortStatus::Inferred, "Spec shiny glint remains inferred without an exact source technique");
 
     LuShaderInfo darkling_structure_glint{94, 104, "Darkling Structure Shiny Glint"};
     LuShaderPolicy darkling_structure_glint_policy = shaderPolicyFromInfo(darkling_structure_glint);
@@ -909,7 +1064,7 @@ int main() {
     expect(darkling_structure_glint_policy.alpha_semantic == ShaderAlphaSemantic::OutputAlpha, "Structure shiny glint alpha is not darkling control data");
     expect(darkling_structure_glint_policy.source_status_note.find("no distinct Darkling Structure Shiny Glint technique") != std::string::npos,
         "Structure shiny glint records missing darkling-specific source technique");
-    expect(darkling_structure_glint_policy.port_status == ShaderPortStatus::Verified, "Structure shiny glint source math verified");
+    expect(darkling_structure_glint_policy.port_status == ShaderPortStatus::Inferred, "Structure shiny glint remains inferred without an exact source technique");
 
     LuShaderInfo vert_color_alpha_fade{33, 9, "VertColor_Alpha_Fade"};
     LuShaderPolicy vert_color_alpha_fade_policy = shaderPolicyFromInfo(vert_color_alpha_fade);
@@ -930,7 +1085,7 @@ int main() {
     expect(!one_sided_alpha_skinned_policy.uses_lighting, "OneSidedAlpha skinned is no-light");
     expect(one_sided_alpha_skinned_policy.uses_uv_animation, "OneSidedAlpha skinned scrolls UVs");
     expect(one_sided_alpha_skinned_policy.uses_alpha_animation, "OneSidedAlpha skinned uses fade alpha");
-    expect(one_sided_alpha_skinned_policy.port_status == ShaderPortStatus::Verified, "OneSidedAlpha skinned verified");
+    expect(one_sided_alpha_skinned_policy.port_status == ShaderPortStatus::Unported, "OneSidedAlpha skinned waits for runtime bone matrices");
 
     LuShaderInfo one_sided_alpha{57, 64, "OneSidedAlpha AnimUV V"};
     LuShaderPolicy one_sided_alpha_policy = shaderPolicyFromInfo(one_sided_alpha);
@@ -939,6 +1094,26 @@ int main() {
     expect(one_sided_alpha_policy.cull_mode == RenderCullMode::Backface, "OneSidedAlpha remains one-sided");
     expect(one_sided_alpha_policy.validation_status_note.find("No resolved CDClient") != std::string::npos,
         "OneSidedAlpha records no local resolved users");
+
+    LuShaderInfo scrolling_uv{13, 13, "ScrollingUV"};
+    LuShaderPolicy scrolling_uv_policy = shaderPolicyFromInfo(scrolling_uv);
+    expect(scrolling_uv_policy.shader_family == LegacyShaderFamily::BasicLit, "ScrollingUV uses source-equivalent lit Basic program");
+    expect(scrolling_uv_policy.source_file == "AlphaAsAlpha.fx", "ScrollingUV source file");
+    expect(scrolling_uv_policy.source_technique == "Technique_AlphaAsAlpha_UVScrolling_SimpleV", "ScrollingUV exact source technique");
+    expect(scrolling_uv_policy.uses_vertex_color, "ScrollingUV source uses vertex color");
+    expect(scrolling_uv_policy.uses_lighting, "ScrollingUV source uses Basic directional lighting");
+    expect(scrolling_uv_policy.uses_uv_animation, "ScrollingUV applies texture transform");
+    expect(scrolling_uv_policy.alpha_mode == RenderAlphaMode::Opaque, "ScrollingUV leaves blend state to NiAlpha");
+    expect(scrolling_uv_policy.depth_write, "ScrollingUV leaves depth writes to NiZ");
+    expect(scrolling_uv_policy.port_status == ShaderPortStatus::Verified, "ScrollingUV verified");
+
+    LuShaderInfo drop_shadow{98, 74, "Drop Shadow"};
+    LuShaderPolicy drop_shadow_policy = shaderPolicyFromInfo(drop_shadow);
+    expect(drop_shadow_policy.shader_family == LegacyShaderFamily::AlphaAsAlpha, "Drop Shadow uses AlphaAsAlpha shadow-bake program path");
+    expect(drop_shadow_policy.source_file == "AlphaAsAlpha.fx", "Drop Shadow closest source file");
+    expect(drop_shadow_policy.source_technique == "Technique_AlphaAsAlpha_SHADOW_BAKE", "Drop Shadow closest source technique");
+    expect(drop_shadow_policy.source_status_note.find("no direct client users") != std::string::npos, "Drop Shadow records unresolved source-name ambiguity");
+    expect(drop_shadow_policy.port_status == ShaderPortStatus::Inferred, "Drop Shadow remains inferred without a real user");
 
     LuShaderInfo two_textures_added{83, 93, "Two Textures Added NL VC AnimUV"};
     LuShaderPolicy two_textures_added_policy = shaderPolicyFromInfo(two_textures_added);
@@ -1023,7 +1198,19 @@ int main() {
     expect(additive_policy.uses_vertex_color, "Additive uses vertex color");
     expect(additive_policy.source_status_note.find("No additive static-mesh") != std::string::npos,
         "Additive records why source is provisional");
-    expect(additive_policy.port_status == ShaderPortStatus::Placeholder, "Additive source technique is provisional");
+    expect(additive_policy.port_status == ShaderPortStatus::Inferred, "Additive source technique remains explicitly inferred");
+
+    LuShaderInfo fixed_function{0, -1, "Fixed Function"};
+    LuShaderPolicy fixed_function_policy = shaderPolicyFromInfo(fixed_function);
+    expect(fixed_function_policy.source_technique == "Direct3D9 fixed-function pipeline", "Fixed Function is identified as a non-FX path");
+    expect(fixed_function_policy.source_status_note.find("not an FX technique") != std::string::npos, "Fixed Function records why no FX port exists");
+    expect(fixed_function_policy.port_status == ShaderPortStatus::NotApplicable, "Fixed Function is not an FX shader port");
+
+    LuShaderInfo multishader{100, 9999, "Multishader"};
+    LuShaderPolicy multishader_policy = shaderPolicyFromInfo(multishader);
+    expect(multishader_policy.source_technique == "CDClient multishader dispatcher", "Multishader is identified as a dispatcher");
+    expect(multishader_policy.source_status_note.find("S##_") != std::string::npos, "Multishader records prefix authority");
+    expect(multishader_policy.port_status == ShaderPortStatus::NotApplicable, "Multishader does not have its own GPU program");
 
     LuShaderInfo pet_cloud{82, 92, "Pet Taming LEGO In Cloud"};
     LuShaderPolicy pet_cloud_policy = shaderPolicyFromInfo(pet_cloud);
@@ -1041,6 +1228,15 @@ int main() {
     expect(!pet_cloud_policy.uses_specular, "Pet cloud source has no specular");
     expect(!pet_cloud_policy.uses_reflection, "Pet cloud source has no reflection");
     expect(pet_cloud_policy.port_status == ShaderPortStatus::Verified, "Pet cloud verified against PostProcessing source and real assets");
+
+    LuShaderInfo imagination_cloud{81, 91, "Pet Taming Imagination Cloud"};
+    LuShaderPolicy imagination_cloud_policy = shaderPolicyFromInfo(imagination_cloud);
+    expect(imagination_cloud_policy.source_file == "PostProcessingShaders.fx", "Imagination cloud source file");
+    expect(imagination_cloud_policy.source_technique == "Technique_ImaginationCloud", "Imagination cloud exact source technique");
+    expect(imagination_cloud_policy.alpha_mode == RenderAlphaMode::AlphaBlend, "Imagination cloud blends");
+    expect(!imagination_cloud_policy.depth_write, "Imagination cloud disables depth writes");
+    expect(!imagination_cloud_policy.uses_ni_render_state, "Imagination cloud source owns render state");
+    expect(imagination_cloud_policy.port_status == ShaderPortStatus::Verified, "Imagination cloud verified");
 
     LuShaderInfo lego_no_ambient{78, 88, "LEGO NoAmbient"};
     LuShaderPolicy lego_no_ambient_policy = shaderPolicyFromInfo(lego_no_ambient);
@@ -1132,7 +1328,9 @@ int main() {
     expect(!ocean_distort_nodepth_policy.uses_reflection, "Ocean NoDepth has no reflection");
     expect(ocean_distort_nodepth_policy.uses_uv_animation, "Ocean NoDepth uses UV animation");
     expect(ocean_distort_nodepth_policy.uses_alpha_animation, "Ocean NoDepth uses fade alpha");
-    expect(ocean_distort_nodepth_policy.port_status == ShaderPortStatus::Inferred, "Ocean NoDepth is explicitly inferred");
+    expect(ocean_distort_nodepth_policy.validation_status_note.find("exactly matching") != std::string::npos,
+        "Ocean NoDepth records exact render-state equivalence");
+    expect(ocean_distort_nodepth_policy.port_status == ShaderPortStatus::Verified, "Ocean NoDepth source and render state verified");
 
     LuShaderInfo ocean_distort_unlit{91, 101, "Distortion (Ocean) Unlit"};
     LuShaderPolicy ocean_distort_unlit_policy = shaderPolicyFromInfo(ocean_distort_unlit);

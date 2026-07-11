@@ -162,14 +162,68 @@ mesh NIF paths; 10,532 parse into 68,711 render meshes. The two exceptions are
 an unreadable/empty planetoid path and `env_won_gnar_river-plane02.nif`, whose
 header is rejected as malformed (`block type name too long`).
 
+## FX Port Coverage
+
+The July 11, 2026 source audit maps all 467 recovered `.fx` techniques into the
+catalog (`mapped=467`, `unmapped=0`). Across the 100 CDClient shader rows, the
+current evidence ledger is 77 verified, 14 inferred, 7 unported, and 2 not
+applicable. `Verified` means the selected source technique, shader math, texture
+roles, and forced render state are implemented; it does not mean a merely
+similar technique was found.
+
+The seven unported rows are deliberately explicit:
+
+- IDs 52-56 are exact recovered skinned techniques. Their static pixel paths
+  are known, but runtime bone-matrix deformation is not implemented, so they
+  must not be reported as verified bind-pose shader ports.
+- IDs 32 and 62 name the six-technique Gray Bubble fullscreen/object stencil
+  orchestration. CDClient has no direct assets assigned to either row. The
+  actual asset-facing interior ghost row, ID 69, is implemented separately.
+
+IDs 0 and 100 are not GPU shader ports: ID 0 denotes the D3D9 fixed-function
+pipeline and has no resolved current render-mesh users; ID 100 is the
+Multishader dispatcher whose nearest authoritative `S##_` prefix chooses the
+real child shader.
+
+Inferred rows remain labeled inferred when the recovered sources do not expose
+an exact mapShaders-named technique. This includes the three Darkling Shiny
+Glint labels (92-94): the current zero-user fallback uses ordinary ShinyGlint,
+but that is not evidence of a 1:1 darkling technique.
+
+### BrickWater data path
+
+`BrickWater.fx::Technique_BrickWater` requires authored tangent and bitangent
+streams plus a normal/depth texture. `lu-assets` now preserves Gamebryo bump,
+normal, parallax, and shader-texture descriptors instead of discarding them,
+and render extraction carries tangents and bitangents through to bgfx. The sole
+client asset, `mesh/env/brick_water_test_plane.nif`, stores
+`brick_noise_normalmap_16x16.dds` as its only otherwise-unbound
+`NiSourceTexture`; this matches the recovered effect's `NTM="normal"`,
+`NTMIndex=0` binding. The port retains the original three dependent parallax
+reads, tangent-space directional/hemisphere lighting, Fresnel term, 320-power
+specular, vertex-color multiplication, and opaque output alpha. The environment
+cube declared by the FX is not sampled by its pixel shader and is therefore not
+invented by the port.
+
+### Gray Bubble interior ghost
+
+Shader 69 uses `GrayBubble.fx::Technique_GrayBubble_Ghost` for all 15 assigned
+modular-vehicle and rocket volume assets. The port uses point sampling and
+forces the recovered state independently of Ni properties: source-alpha blend,
+depth test and write, clockwise culling, stencil `Always` with pass `Replace`
+and reference 2. The pixel path is exactly base texture times vertex color/fade
+alpha.
+
 ## Known Real-Asset Contracts
 
 | Asset | Evidence and expected result |
 | --- | --- |
 | `mesh/factionkit2/minifig_accessory_spacerangerkit3_armor.nif` | CDClient shader 19 (`LEGO-SuperEmissive`) is authoritative; `ArmorShade:FXshader_Armor` is diagnostic noise; `Technique_LEGOPPLightingVertColor_SuperEmissive`; authored alpha blending and depth writes coexist; vertex alpha controls emissive intensity while output/fade alpha controls framebuffer blending. |
 | `mesh/pets/ptmg_corn_cob.nif` | CDClient shader 82 (`Pet Taming LEGO In Cloud`) is authoritative; `NiMultiShader1` does not override it; `Technique_ImaginationCloud`; unlit alpha blend with no depth write. |
+| `mesh/env/brick_water_test_plane.nif` | CDClient shader 44; `BrickWater.fx::Technique_BrickWater`; tangent-space normal/parallax lighting with `brick_noise_normalmap_16x16.dds`; opaque output. |
+| `mesh/veh/modular_volume_body.nif` | CDClient shader 69; `GrayBubble.fx::Technique_GrayBubble_Ghost`; point-sampled texture times ghost color with forced source-alpha blend, depth write, clockwise cull, and stencil replace/ref 2. |
 
-## Milestone 1 Lighting
+## Historical Milestone 1 Lighting
 
 The initial legacy shader uses:
 
@@ -179,5 +233,8 @@ The initial legacy shader uses:
 - NIF material diffuse color
 - vertex color
 
-No shadows, environment maps, specular approximation, fog transitions, alpha
-sorting, skinning, particles, or terrain blending are part of milestone 1.
+This list describes the original milestone only. The current renderer has since
+added source-backed specular, reflection maps, fog, authored alpha/depth/stencil
+state, terrain/ocean families, and specialized FX programs. Runtime skeletal
+deformation, particles, and the full Gray Bubble orchestration remain separate
+engine work as documented above.

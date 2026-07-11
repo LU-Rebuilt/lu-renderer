@@ -37,7 +37,18 @@ enum class LegacyShaderFamily {
     OceanDistortFx,
     OceanDistortUnlit,
     LegoppLighting,
-    ClearPlastic
+    ClearPlastic,
+    TvScreen,
+    HeadIcon,
+    PowerupHeart,
+    PowerupOrb,
+    ModelFootprint,
+    Undefined,
+    OceanFlatSurf,
+    TerrainTextureOnly,
+    TerrainDiffuseMapOnly,
+    BrickWater,
+    GrayBubbleGhost
 };
 
 enum class LegoppShaderVariant {
@@ -73,7 +84,8 @@ enum class ShaderPortStatus {
     Unported,
     Placeholder,
     Inferred,
-    Verified
+    Verified,
+    NotApplicable
 };
 
 enum class RenderAlphaMode {
@@ -282,6 +294,8 @@ struct RenderFeatureSettings {
 struct Vertex {
     Vec3 position;
     Vec3 normal = {0.0f, 1.0f, 0.0f};
+    Vec3 tangent = {1.0f, 0.0f, 0.0f};
+    Vec3 bitangent = {0.0f, 0.0f, 1.0f};
     Vec2 uv;
     Vec2 uv2;
     uint32_t color_rgba8 = 0xffffffffu;
@@ -375,6 +389,8 @@ struct MaterialAsset {
     TextureAddressMode gloss_texture_address;
     std::string glow_texture_path;
     TextureAddressMode glow_texture_address;
+    std::string normal_texture_path;
+    TextureAddressMode normal_texture_address;
     bool alpha_blend = false;
     uint8_t source_blend = 6;
     uint8_t destination_blend = 7;

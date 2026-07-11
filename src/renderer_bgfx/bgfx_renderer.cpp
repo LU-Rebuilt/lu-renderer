@@ -42,6 +42,8 @@ constexpr uint64_t kWrapLinearSampler = 0;
 struct GpuVertex {
     float x, y, z;
     float nx, ny, nz;
+    float tx, ty, tz;
+    float bx, by, bz;
     float u, v;
     float u2, v2;
     uint32_t abgr;
@@ -51,6 +53,8 @@ struct GpuVertex {
         layout.begin()
             .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Tangent, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::Bitangent, 3, bgfx::AttribType::Float)
             .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
             .add(bgfx::Attrib::TexCoord1, 2, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
@@ -176,6 +180,7 @@ const char* portStatusName(ShaderPortStatus status) {
     case ShaderPortStatus::Placeholder: return "placeholder";
     case ShaderPortStatus::Inferred: return "inferred";
     case ShaderPortStatus::Verified: return "verified";
+    case ShaderPortStatus::NotApplicable: return "not-applicable";
     }
     return "?";
 }
@@ -199,6 +204,17 @@ const char* shaderFamilyName(LegacyShaderFamily family) {
     case LegacyShaderFamily::OceanDistortUnlit: return "ocean-unlit";
     case LegacyShaderFamily::LegoppLighting: return "legopp";
     case LegacyShaderFamily::ClearPlastic: return "clear";
+    case LegacyShaderFamily::TvScreen: return "tv-screen";
+    case LegacyShaderFamily::HeadIcon: return "head-icon";
+    case LegacyShaderFamily::PowerupHeart: return "powerup-heart";
+    case LegacyShaderFamily::PowerupOrb: return "powerup-orb";
+    case LegacyShaderFamily::ModelFootprint: return "model-footprint";
+    case LegacyShaderFamily::Undefined: return "undefined";
+    case LegacyShaderFamily::OceanFlatSurf: return "ocean-flat";
+    case LegacyShaderFamily::TerrainTextureOnly: return "terrain-texture-only";
+    case LegacyShaderFamily::TerrainDiffuseMapOnly: return "terrain-diffuse-only";
+    case LegacyShaderFamily::BrickWater: return "brick-water";
+    case LegacyShaderFamily::GrayBubbleGhost: return "gray-bubble-ghost";
     }
     return "?";
 }
@@ -441,7 +457,11 @@ uint32_t samplerFlagsForAddressMode(const TextureAddressMode& address) {
 }
 
 uint32_t diffuseSamplerFlagsForMaterial(const MaterialAsset& material) {
-    return samplerFlagsForAddressMode(material.diffuse_texture_address);
+    uint32_t flags = samplerFlagsForAddressMode(material.diffuse_texture_address);
+    if (material.shader_family == LegacyShaderFamily::GrayBubbleGhost) {
+        flags |= BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
+    }
+    return flags;
 }
 
 bool useColorInLegoppDiffuse(const MaterialAsset& material, bool has_texture) {
@@ -677,6 +697,7 @@ bool BgfxRenderer::init(const RendererInit& init) {
 
     s_diffuse_ = bgfx::createUniform("s_diffuse", bgfx::UniformType::Sampler);
     s_dark_ = bgfx::createUniform("s_dark", bgfx::UniformType::Sampler);
+    s_normal_ = bgfx::createUniform("s_normal", bgfx::UniformType::Sampler);
     s_lu_env_ = bgfx::createUniform("s_luEnv", bgfx::UniformType::Sampler);
     s_scene_color_ = bgfx::createUniform("s_sceneColor", bgfx::UniformType::Sampler);
     s_scene_depth_ = bgfx::createUniform("s_sceneDepth", bgfx::UniformType::Sampler);
@@ -750,8 +771,8 @@ bool BgfxRenderer::init(const RendererInit& init) {
     }
     rebuildEnvironmentProbeTexture();
     legacy_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_legacy_mesh.sc.bin");
-    basic_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_basic.sc.bin");
-    basic_lit_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_basic_lit.sc.bin");
+    basic_program_ = loadProgram("vs_basic.sc.bin", "fs_basic.sc.bin");
+    basic_lit_program_ = loadProgram("vs_basic.sc.bin", "fs_basic.sc.bin");
     basic_two_layer_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_basic_two_layer.sc.bin");
     alpha_as_alpha_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_alpha_as_alpha.sc.bin");
     alpha_uv_scroll_program_ = loadProgram("vs_uv_scroll_alpha.sc.bin", "fs_uv_scroll_alpha.sc.bin");
@@ -766,6 +787,17 @@ bool BgfxRenderer::init(const RendererInit& init) {
     ocean_distort_unlit_program_ = loadProgram("vs_ocean_distort_unlit.sc.bin", "fs_ocean_distort.sc.bin");
     ocean_distort_fx_program_ = loadProgram("vs_ocean_distort_fx.sc.bin", "fs_ocean_distort_fx.sc.bin");
     clear_plastic_program_ = loadProgram("vs_lu_lit_mesh.sc.bin", "fs_clear_plastic.sc.bin");
+    tv_screen_program_ = loadProgram("vs_tv_screen.sc.bin", "fs_tv_screen.sc.bin");
+    head_icon_program_ = loadProgram("vs_head_icon.sc.bin", "fs_head_icon.sc.bin");
+    powerup_heart_program_ = loadProgram("vs_powerup_heart.sc.bin", "fs_vertex_color.sc.bin");
+    powerup_orb_program_ = loadProgram("vs_powerup_orb.sc.bin", "fs_powerup_orb.sc.bin");
+    model_footprint_program_ = loadProgram("vs_model_footprint.sc.bin", "fs_vertex_color.sc.bin");
+    undefined_program_ = loadProgram("vs_legacy_mesh.sc.bin", "fs_undefined.sc.bin");
+    ocean_flat_surf_program_ = loadProgram("vs_ocean_flat_surf.sc.bin", "fs_ocean_flat_surf.sc.bin");
+    terrain_texture_only_program_ = loadProgram("vs_terrain_basic.sc.bin", "fs_terrain_texture_only.sc.bin");
+    terrain_diffuse_map_only_program_ = loadProgram("vs_terrain_basic.sc.bin", "fs_terrain_diffuse_only.sc.bin");
+    brick_water_program_ = loadProgram("vs_brick_water.sc.bin", "fs_brick_water.sc.bin");
+    gray_bubble_ghost_program_ = loadProgram("vs_gray_bubble_ghost.sc.bin", "fs_gray_bubble_ghost.sc.bin");
     shadow_depth_program_ = loadProgram("vs_shadow_depth.sc.bin", "fs_shadow_depth.sc.bin");
     bloom_program_ = loadProgram("vs_fullscreen.sc.bin", "fs_bloom.sc.bin");
     gtao_program_ = loadProgram("vs_fullscreen.sc.bin", "fs_gtao.sc.bin");
@@ -792,6 +824,17 @@ bool BgfxRenderer::init(const RendererInit& init) {
         !bgfx::isValid(ocean_distort_unlit_program_) ||
         !bgfx::isValid(ocean_distort_fx_program_) ||
         !bgfx::isValid(clear_plastic_program_) ||
+        !bgfx::isValid(tv_screen_program_) ||
+        !bgfx::isValid(head_icon_program_) ||
+        !bgfx::isValid(powerup_heart_program_) ||
+        !bgfx::isValid(powerup_orb_program_) ||
+        !bgfx::isValid(model_footprint_program_) ||
+        !bgfx::isValid(undefined_program_) ||
+        !bgfx::isValid(ocean_flat_surf_program_) ||
+        !bgfx::isValid(terrain_texture_only_program_) ||
+        !bgfx::isValid(terrain_diffuse_map_only_program_) ||
+        !bgfx::isValid(brick_water_program_) ||
+        !bgfx::isValid(gray_bubble_ghost_program_) ||
         !bgfx::isValid(shadow_depth_program_) ||
         !bgfx::isValid(bloom_program_) ||
         !bgfx::isValid(gtao_program_) ||
@@ -850,6 +893,17 @@ void BgfxRenderer::shutdown() {
     if (bgfx::isValid(ocean_distort_unlit_program_)) bgfx::destroy(ocean_distort_unlit_program_);
     if (bgfx::isValid(ocean_distort_fx_program_)) bgfx::destroy(ocean_distort_fx_program_);
     if (bgfx::isValid(clear_plastic_program_)) bgfx::destroy(clear_plastic_program_);
+    if (bgfx::isValid(tv_screen_program_)) bgfx::destroy(tv_screen_program_);
+    if (bgfx::isValid(head_icon_program_)) bgfx::destroy(head_icon_program_);
+    if (bgfx::isValid(powerup_heart_program_)) bgfx::destroy(powerup_heart_program_);
+    if (bgfx::isValid(powerup_orb_program_)) bgfx::destroy(powerup_orb_program_);
+    if (bgfx::isValid(model_footprint_program_)) bgfx::destroy(model_footprint_program_);
+    if (bgfx::isValid(undefined_program_)) bgfx::destroy(undefined_program_);
+    if (bgfx::isValid(ocean_flat_surf_program_)) bgfx::destroy(ocean_flat_surf_program_);
+    if (bgfx::isValid(terrain_texture_only_program_)) bgfx::destroy(terrain_texture_only_program_);
+    if (bgfx::isValid(terrain_diffuse_map_only_program_)) bgfx::destroy(terrain_diffuse_map_only_program_);
+    if (bgfx::isValid(brick_water_program_)) bgfx::destroy(brick_water_program_);
+    if (bgfx::isValid(gray_bubble_ghost_program_)) bgfx::destroy(gray_bubble_ghost_program_);
     if (bgfx::isValid(shadow_depth_program_)) bgfx::destroy(shadow_depth_program_);
     if (bgfx::isValid(bloom_program_)) bgfx::destroy(bloom_program_);
     if (bgfx::isValid(gtao_program_)) bgfx::destroy(gtao_program_);
@@ -860,6 +914,7 @@ void BgfxRenderer::shutdown() {
     if (bgfx::isValid(view_normal_program_)) bgfx::destroy(view_normal_program_);
     if (bgfx::isValid(s_diffuse_)) bgfx::destroy(s_diffuse_);
     if (bgfx::isValid(s_dark_)) bgfx::destroy(s_dark_);
+    if (bgfx::isValid(s_normal_)) bgfx::destroy(s_normal_);
     if (bgfx::isValid(s_lu_env_)) bgfx::destroy(s_lu_env_);
     if (bgfx::isValid(s_scene_color_)) bgfx::destroy(s_scene_color_);
     if (bgfx::isValid(s_scene_depth_)) bgfx::destroy(s_scene_depth_);
@@ -977,6 +1032,8 @@ void BgfxRenderer::loadWorld(const RenderWorld& world) {
             vertices.push_back({
                 v.position.x, v.position.y, v.position.z,
                 v.normal.x, v.normal.y, v.normal.z,
+                v.tangent.x, v.tangent.y, v.tangent.z,
+                v.bitangent.x, v.bitangent.y, v.bitangent.z,
                 v.uv.x, v.uv.y,
                 v.uv2.x, v.uv2.y,
                 v.color_rgba8
@@ -1034,6 +1091,11 @@ void BgfxRenderer::loadWorld(const RenderWorld& world) {
         gpu.dark_texture = loadTexture(auxiliary_texture_path, auxiliary_sampler_flags);
         if (!bgfx::isValid(gpu.dark_texture)) {
             gpu.dark_texture = auxiliary_texture_path.empty() ? white_texture_ : missing_texture_;
+        }
+        gpu.normal_texture_sampler_flags = samplerFlagsForAddressMode(mesh.material.normal_texture_address);
+        gpu.normal_texture = loadTexture(mesh.material.normal_texture_path, gpu.normal_texture_sampler_flags);
+        if (!bgfx::isValid(gpu.normal_texture)) {
+            gpu.normal_texture = mesh.material.normal_texture_path.empty() ? white_texture_ : missing_texture_;
         }
         gpu.reflection_texture = loadReflectionCubeTexture(mesh.material.lu_shader_reflection_map);
         if (!bgfx::isValid(gpu.reflection_texture)) {
@@ -1471,6 +1533,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
         bgfx::setTexture(1, s_lu_env_, lu_env_texture);
         bgfx::setTexture(2, s_dark_, mesh.dark_texture, mesh.dark_texture_sampler_flags);
         bgfx::setTexture(3, s_shadow_map_, directional_shadows_enabled ? shadow_depth_texture_ : white_texture_);
+        bgfx::setTexture(4, s_normal_, mesh.normal_texture, mesh.normal_texture_sampler_flags);
         bgfx::setUniform(u_shadow_matrix_, shadow_matrix);
         bgfx::setUniform(u_material_diffuse_, diffuse);
         bgfx::setUniform(u_material_emissive_, emissive);
@@ -1525,7 +1588,7 @@ void BgfxRenderer::render(const OrbitCamera& camera) {
             effect_time,
             mesh.material.lu_shader_uses_uv_animation ? 1.0f : 0.0f,
             mesh.material.lu_shader_uses_alpha_animation ? 1.0f : 0.0f,
-            1.0f
+            mesh.material.lu_shader_uses_lighting ? 1.0f : 0.0f
         };
         float uv_motion1[4] = {
             mesh.material.lu_uv_motion_layer1.x,
@@ -1852,7 +1915,11 @@ bgfx::ProgramHandle BgfxRenderer::loadProgram(const char* vs_name, const char* f
         if (bgfx::isValid(fs)) bgfx::destroy(fs);
         return BGFX_INVALID_HANDLE;
     }
-    return bgfx::createProgram(vs, fs, true);
+    bgfx::ProgramHandle program = bgfx::createProgram(vs, fs, true);
+    if (!bgfx::isValid(program)) {
+        std::cerr << "Failed to link shader program: " << vs_name << " + " << fs_name << "\n";
+    }
+    return program;
 }
 
 bgfx::TextureHandle BgfxRenderer::loadTexture(const std::string& path, uint32_t sampler_flags) {
@@ -2217,7 +2284,7 @@ void BgfxRenderer::captureGlobalReflectionProbe(float effect_time) {
                 effect_time,
                 mesh.material.lu_shader_uses_uv_animation ? 1.0f : 0.0f,
                 mesh.material.lu_shader_uses_alpha_animation ? 1.0f : 0.0f,
-                1.0f
+                mesh.material.lu_shader_uses_lighting ? 1.0f : 0.0f
             };
             float uv_motion1[4] = {mesh.material.lu_uv_motion_layer1.x, mesh.material.lu_uv_motion_layer1.y, 0.0f, 0.0f};
             float uv_motion2[4] = {mesh.material.lu_uv_motion_layer2.x, mesh.material.lu_uv_motion_layer2.y, 0.0f, 0.0f};
@@ -2314,6 +2381,28 @@ bgfx::ProgramHandle BgfxRenderer::programForMaterial(const MaterialAsset& materi
         return bgfx::isValid(legopp_program_) ? legopp_program_ : legacy_program_;
     case LegacyShaderFamily::ClearPlastic:
         return bgfx::isValid(clear_plastic_program_) ? clear_plastic_program_ : legacy_program_;
+    case LegacyShaderFamily::TvScreen:
+        return bgfx::isValid(tv_screen_program_) ? tv_screen_program_ : legacy_program_;
+    case LegacyShaderFamily::HeadIcon:
+        return bgfx::isValid(head_icon_program_) ? head_icon_program_ : legacy_program_;
+    case LegacyShaderFamily::PowerupHeart:
+        return bgfx::isValid(powerup_heart_program_) ? powerup_heart_program_ : legacy_program_;
+    case LegacyShaderFamily::PowerupOrb:
+        return bgfx::isValid(powerup_orb_program_) ? powerup_orb_program_ : legacy_program_;
+    case LegacyShaderFamily::ModelFootprint:
+        return bgfx::isValid(model_footprint_program_) ? model_footprint_program_ : legacy_program_;
+    case LegacyShaderFamily::Undefined:
+        return bgfx::isValid(undefined_program_) ? undefined_program_ : legacy_program_;
+    case LegacyShaderFamily::OceanFlatSurf:
+        return bgfx::isValid(ocean_flat_surf_program_) ? ocean_flat_surf_program_ : legacy_program_;
+    case LegacyShaderFamily::TerrainTextureOnly:
+        return bgfx::isValid(terrain_texture_only_program_) ? terrain_texture_only_program_ : legacy_program_;
+    case LegacyShaderFamily::TerrainDiffuseMapOnly:
+        return bgfx::isValid(terrain_diffuse_map_only_program_) ? terrain_diffuse_map_only_program_ : legacy_program_;
+    case LegacyShaderFamily::BrickWater:
+        return bgfx::isValid(brick_water_program_) ? brick_water_program_ : legacy_program_;
+    case LegacyShaderFamily::GrayBubbleGhost:
+        return bgfx::isValid(gray_bubble_ghost_program_) ? gray_bubble_ghost_program_ : legacy_program_;
     case LegacyShaderFamily::Metallic:
         if (material.lu_shader_reflection_map.find("polished") != std::string::npos) {
             return bgfx::isValid(metallic_polished_program_) ? metallic_polished_program_ : metallic_brushed_program_;
@@ -3209,6 +3298,7 @@ void BgfxRenderer::destroyMesh(GpuMesh& mesh) {
     mesh.index_buffer = BGFX_INVALID_HANDLE;
     mesh.texture = BGFX_INVALID_HANDLE;
     mesh.dark_texture = BGFX_INVALID_HANDLE;
+    mesh.normal_texture = BGFX_INVALID_HANDLE;
 }
 
 void BgfxRenderer::drawGrid() {
@@ -3225,10 +3315,10 @@ void BgfxRenderer::drawGrid() {
     uint32_t idx = 0;
     for (int i = -kHalfLines; i <= kHalfLines; ++i) {
         float p = static_cast<float>(i) * kStep;
-        verts[idx++] = {-kHalfLines * kStep, 0, p, 0, 1, 0, 0, 0, 0, 0, kColor};
-        verts[idx++] = { kHalfLines * kStep, 0, p, 0, 1, 0, 0, 0, 0, 0, kColor};
-        verts[idx++] = {p, 0, -kHalfLines * kStep, 0, 1, 0, 0, 0, 0, 0, kColor};
-        verts[idx++] = {p, 0,  kHalfLines * kStep, 0, 1, 0, 0, 0, 0, 0, kColor};
+        verts[idx++] = {-kHalfLines * kStep, 0, p, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
+        verts[idx++] = { kHalfLines * kStep, 0, p, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
+        verts[idx++] = {p, 0, -kHalfLines * kStep, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
+        verts[idx++] = {p, 0,  kHalfLines * kStep, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, kColor};
     }
 
     float diffuse[4] = {0.7f, 0.7f, 0.7f, 1.0f};

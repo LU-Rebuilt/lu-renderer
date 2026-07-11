@@ -399,6 +399,17 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
 
     switch (shader.id) {
     case 0:
+        policy.shader_family = LegacyShaderFamily::LegacyMesh;
+        policy.source_file = "not applicable";
+        policy.source_technique = "Direct3D9 fixed-function pipeline";
+        policy.source_status_note =
+            "mapShaders identifies the fixed-function pipeline, not an FX technique; current client data has no resolved render-mesh user requiring a GPU shader port.";
+        policy.uses_material_diffuse = true;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::NotApplicable;
+        break;
     case 20:
     case 99:
         policy.shader_family = LegacyShaderFamily::LegacyMesh;
@@ -408,7 +419,9 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uses_lighting = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Placeholder;
+        policy.source_status_note =
+            "No recovered FX technique encodes the mapShaders Over Everything ordering/depth contract; Basic material no-lighting is the source-backed color path and no direct client users exist.";
+        policy.port_status = ShaderPortStatus::Inferred;
         break;
     case 1:
     case 9:
@@ -495,6 +508,107 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.port_status = ShaderPortStatus::Verified;
         break;
+    case 13:
+        policy.shader_family = LegacyShaderFamily::BasicLit;
+        policy.source_file = "AlphaAsAlpha.fx";
+        policy.source_technique = "Technique_AlphaAsAlpha_UVScrolling_SimpleV";
+        policy.uses_vertex_color = true;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_uv_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 8:
+        policy.shader_family = LegacyShaderFamily::TvScreen;
+        policy.alpha_mode = RenderAlphaMode::AlphaBlend;
+        policy.source_file = "TVScreen.fx";
+        policy.source_technique = "Technique_TVScreen";
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_uv_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 10:
+        policy.shader_family = LegacyShaderFamily::HeadIcon;
+        policy.cull_mode = RenderCullMode::Clockwise;
+        policy.source_file = "HeadIcon.fx";
+        policy.source_technique = "Technique_HeadIcon";
+        policy.uses_texture = false;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 12:
+        policy.shader_family = LegacyShaderFamily::PowerupHeart;
+        policy.cull_mode = RenderCullMode::Clockwise;
+        policy.source_file = "Powerups.fx";
+        policy.source_technique = "Technique_HeartPowerup";
+        policy.uses_texture = false;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 15:
+    case 86:
+        policy.shader_family = LegacyShaderFamily::Undefined;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Undefined";
+        policy.uses_texture = false;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 16:
+        policy.shader_family = LegacyShaderFamily::PowerupOrb;
+        policy.alpha_mode = RenderAlphaMode::AlphaBlend;
+        policy.cull_mode = RenderCullMode::TwoSided;
+        policy.source_file = "Powerups.fx";
+        policy.source_technique = "Technique_OrbPowerup";
+        policy.uses_texture = false;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = true;
+        policy.uses_reflection = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 18:
+        policy.shader_family = LegacyShaderFamily::ModelFootprint;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Model_Footprint";
+        policy.uses_vertex_color = true;
+        policy.uses_texture = false;
+        policy.uses_material_diffuse = true;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 24:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_Material_NoLighting";
+        policy.uses_material_diffuse = true;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
     case 26:
         policy.shader_family = LegacyShaderFamily::Basic;
         policy.source_file = "BasicShaders.fx";
@@ -561,6 +675,64 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uv_motion_layer1 = {0.0f, 0.16f};
         policy.port_status = ShaderPortStatus::Verified;
         break;
+    case 34:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor_NoTexture";
+        policy.uses_vertex_color = true;
+        policy.uses_texture = false;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_alpha_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 32:
+        policy.shader_family = LegacyShaderFamily::LegacyMesh;
+        policy.source_file = "GrayBubble.fx";
+        policy.source_technique = "Technique_GrayBubble_FullscreenStencilClear";
+        policy.source_status_note =
+            "Gray Bubble is a six-technique fullscreen/object stencil orchestration, not a single mesh program; CDClient has zero direct shader-32 assets.";
+        policy.uses_ni_render_state = false;
+        policy.port_status = ShaderPortStatus::Unported;
+        break;
+    case 62:
+        policy.shader_family = LegacyShaderFamily::LegacyMesh;
+        policy.source_file = "PostProcessingShaders.fx";
+        policy.source_technique = "Technique_GrayBubble_FullscreenStencilClear";
+        policy.source_status_note =
+            "Post-process Gray Bubble is a six-technique fullscreen/object stencil orchestration, not a single mesh program; CDClient has zero direct shader-62 assets.";
+        policy.uses_ni_render_state = false;
+        policy.port_status = ShaderPortStatus::Unported;
+        break;
+    case 35:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor";
+        policy.source_status_note =
+            "Recovered FX has no distinct 2D technique; mapShaders label otherwise matches the no-light vertex-color technique.";
+        policy.uses_vertex_color = true;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Inferred;
+        break;
+    case 36:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor_NoTexture";
+        policy.source_status_note =
+            "Recovered FX has no distinct 2D technique; mapShaders label otherwise matches the no-light vertex-color no-texture technique.";
+        policy.uses_vertex_color = true;
+        policy.uses_texture = false;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_alpha_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Inferred;
+        break;
     case 29:
         policy.shader_family = LegacyShaderFamily::Basic;
         policy.source_file = "BasicShaders.fx";
@@ -585,10 +757,9 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         break;
     case 71:
         policy.shader_family = LegacyShaderFamily::AlphaUvScroll;
-        policy.alpha_mode = RenderAlphaMode::AlphaBlend;
-        policy.depth_write = false;
-        policy.source_file = "inferred";
-        policy.source_technique = "ScrollingUV NL AnimAlpha NoFog";
+        policy.source_file = "AlphaAsAlpha.fx";
+        policy.source_technique = "Technique_AlphaAsAlpha_UVScrolling_SimpleV_NoLighting_AlphaAnim";
+        policy.uses_vertex_color = true;
         policy.uses_lighting = false;
         policy.uses_fog = false;
         policy.uses_specular = false;
@@ -596,61 +767,61 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uses_uv_animation = true;
         policy.uses_alpha_animation = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
-        policy.port_status = ShaderPortStatus::Inferred;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 72:
         policy.shader_family = LegacyShaderFamily::Basic;
-        policy.source_file = "inferred";
-        policy.source_technique = "Opaque NL VC NT NoFog";
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor_NoTexture";
         policy.uses_vertex_color = true;
         policy.uses_texture = false;
         policy.uses_lighting = false;
         policy.uses_fog = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Inferred;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 73:
         policy.shader_family = LegacyShaderFamily::Basic;
-        policy.source_file = "inferred";
-        policy.source_technique = "Opaque NL NoFog";
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting";
         policy.uses_lighting = false;
         policy.uses_fog = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Inferred;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 74:
         policy.shader_family = LegacyShaderFamily::Basic;
-        policy.source_file = "inferred";
-        policy.source_technique = "Opaque NL VC NoFog";
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor";
         policy.uses_vertex_color = true;
         policy.uses_lighting = false;
         policy.uses_fog = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Inferred;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 75:
         policy.shader_family = LegacyShaderFamily::BasicLit;
-        policy.source_file = "inferred";
-        policy.source_technique = "Opaque VC NT NoFog";
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_Lighting_VertColor_NoTexture";
         policy.uses_vertex_color = true;
         policy.uses_texture = false;
         policy.uses_fog = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Inferred;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 76:
         policy.shader_family = LegacyShaderFamily::BasicLit;
-        policy.source_file = "inferred";
-        policy.source_technique = "Opaque VC NoFog";
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_Lighting_VertColor";
         policy.uses_vertex_color = true;
         policy.uses_fog = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Inferred;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 84:
         policy.shader_family = LegacyShaderFamily::Basic;
@@ -659,6 +830,32 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uses_lighting = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 42:
+        policy.shader_family = LegacyShaderFamily::BasicLit;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Experimental";
+        policy.uses_vertex_color = true;
+        policy.uses_lighting = true;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 44:
+        policy.shader_family = LegacyShaderFamily::BrickWater;
+        policy.source_file = "BrickWater.fx";
+        policy.source_technique = "Technique_BrickWater";
+        policy.uses_vertex_color = true;
+        policy.uses_texture = false;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = true;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::Ignored;
+        policy.source_status_note =
+            "Exact BrickWater normal/parallax, tangent-space lighting, specular, and Fresnel path; the declared environment cube is intentionally not sampled by the recovered pixel shader.";
         policy.port_status = ShaderPortStatus::Verified;
         break;
     case 3:
@@ -721,6 +918,76 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.port_status = ShaderPortStatus::Verified;
         break;
+    case 4:
+        policy.shader_family = LegacyShaderFamily::TerrainTextureOnly;
+        policy.source_file = "TerrainDiffuse.fx";
+        policy.source_technique = "Technique_Terrain_Texture_Only";
+        policy.source_status_note =
+            "Recovered FX has no generic Terrain Mesh technique; Technique_Terrain_Texture_Only is the only non-rim terrain mesh output that omits the diffuse map.";
+        policy.uses_texture = false;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::Inferred;
+        break;
+    case 51:
+        policy.shader_family = LegacyShaderFamily::AlphaAsAlpha;
+        policy.alpha_mode = RenderAlphaMode::AlphaBlend;
+        policy.cull_mode = RenderCullMode::Backface;
+        policy.source_file = "AlphaAsAlpha.fx";
+        policy.source_technique = "Technique_AlphaAsAlpha_NoLighting_VertColor_AlphaBlend_NoTexture";
+        policy.uses_vertex_color = true;
+        policy.uses_texture = false;
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_alpha_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 53:
+        policy.shader_family = LegacyShaderFamily::BasicLit;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_Lighting_VertColor_Skinned";
+        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.uses_vertex_color = true;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        break;
+    case 54:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_Skinned";
+        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        break;
+    case 55:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor_Skinned";
+        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.uses_vertex_color = true;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        break;
+    case 56:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_VertColor_NoTexture_Skinned";
+        policy.source_status_note = "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.uses_vertex_color = true;
+        policy.uses_texture = false;
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_alpha_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        break;
     case 52:
         policy.shader_family = LegacyShaderFamily::AlphaUvScroll;
         policy.alpha_mode = RenderAlphaMode::AlphaBlend;
@@ -735,7 +1002,9 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uses_alpha_animation = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.uv_motion_layer1 = {0.0f, 0.16f};
-        policy.port_status = ShaderPortStatus::Verified;
+        policy.source_status_note =
+            "Exact FX technique recovered; runtime bone-matrix skinning is not implemented yet.";
+        policy.port_status = ShaderPortStatus::Unported;
         break;
     case 57:
         policy.shader_family = LegacyShaderFamily::AlphaUvScroll;
@@ -753,6 +1022,17 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uses_alpha_animation = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.uv_motion_layer1 = {0.0f, 0.16f};
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 59:
+        policy.shader_family = LegacyShaderFamily::Basic;
+        policy.source_file = "BasicShaders.fx";
+        policy.source_technique = "Technique_Basic_NoLighting_AnimAlpha";
+        policy.uses_lighting = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_alpha_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.port_status = ShaderPortStatus::Verified;
         break;
     case 17:
@@ -922,7 +1202,20 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.uses_lighting = false;
         policy.uses_specular = false;
         policy.uses_reflection = false;
-        policy.port_status = ShaderPortStatus::Placeholder;
+        policy.port_status = ShaderPortStatus::Inferred;
+        break;
+    case 100:
+        policy.shader_family = LegacyShaderFamily::LegacyMesh;
+        policy.source_file = "not applicable";
+        policy.source_technique = "CDClient multishader dispatcher";
+        policy.source_status_note =
+            "Shader 100 selects an authoritative S##_ submesh/ancestor shader ID and never submits its own GPU program.";
+        policy.uses_texture = false;
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.port_status = ShaderPortStatus::NotApplicable;
         break;
     case 78:
         policy.shader_family = LegacyShaderFamily::LegoppNoAmbient;
@@ -989,6 +1282,39 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.alpha_semantic = ShaderAlphaSemantic::ControlDarkling;
         policy.port_status = ShaderPortStatus::Verified;
         break;
+    case 68:
+        policy.shader_family = LegacyShaderFamily::OceanFlatSurf;
+        policy.source_file = "Ocean.fx";
+        policy.source_technique = "Technique_Ocean_FlatSurf";
+        policy.uses_vertex_color = true;
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.uses_uv_animation = true;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 69:
+        policy.shader_family = LegacyShaderFamily::GrayBubbleGhost;
+        policy.alpha_mode = RenderAlphaMode::AlphaBlend;
+        policy.cull_mode = RenderCullMode::Clockwise;
+        policy.depth_write = true;
+        policy.uses_ni_render_state = false;
+        policy.force_alpha_blend = true;
+        policy.source_file = "GrayBubble.fx";
+        policy.source_technique = "Technique_GrayBubble_Ghost";
+        policy.uses_vertex_color = true;
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.validation_status_note =
+            "Validated against all 15 CDClient modular/rocket volume assets assigned to shader 69.";
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 81:
     case 82:
         policy.shader_family = LegacyShaderFamily::Basic;
         policy.legopp_variant = LegoppShaderVariant::PetTamingCloud;
@@ -1068,7 +1394,7 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
             "No resolved CDClient or importer-validated NIF users found in current client dump; no valid S92_ prefix or shader metadata candidates found.";
         policy.uses_material_diffuse = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
-        policy.port_status = ShaderPortStatus::Verified;
+        policy.port_status = ShaderPortStatus::Inferred;
         break;
     case 93:
         policy.shader_family = LegacyShaderFamily::LegoppEffect;
@@ -1081,7 +1407,7 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
             "No resolved CDClient or importer-validated NIF users found in current client dump; no valid S93_ prefix or shader metadata candidates found.";
         policy.uses_material_diffuse = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
-        policy.port_status = ShaderPortStatus::Verified;
+        policy.port_status = ShaderPortStatus::Inferred;
         break;
     case 94:
         policy.shader_family = LegacyShaderFamily::LegoppEffect;
@@ -1094,7 +1420,7 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
             "No resolved CDClient or importer-validated NIF users found in current client dump; no valid S94_ prefix or shader metadata candidates found.";
         policy.uses_material_diffuse = true;
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
-        policy.port_status = ShaderPortStatus::Verified;
+        policy.port_status = ShaderPortStatus::Inferred;
         break;
     case 95:
         policy.shader_family = LegacyShaderFamily::BasicTwoLayer;
@@ -1192,7 +1518,36 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.uv_motion_layer1 = {0.018f, 0.006f};
         policy.uv_motion_layer2 = {-0.011f, 0.014f};
+        policy.validation_status_note =
+            "Technique_Ocean_Distort_2Layers already specifies alpha blending with depth writes disabled, exactly matching the mapShaders NoDepth/Alpha contract.";
+        policy.port_status = ShaderPortStatus::Verified;
+        break;
+    case 98:
+        policy.shader_family = LegacyShaderFamily::AlphaAsAlpha;
+        policy.alpha_mode = RenderAlphaMode::AlphaBlend;
+        policy.cull_mode = RenderCullMode::TwoSided;
+        policy.source_file = "AlphaAsAlpha.fx";
+        policy.source_technique = "Technique_AlphaAsAlpha_SHADOW_BAKE";
+        policy.source_status_note =
+            "mapShaders calls this Drop Shadow while the recovered matching object technique is named SHADOW_BAKE; no direct client users exist to disambiguate it from the separate ShadowBake.fx pipeline.";
+        policy.uses_vertex_color = false;
+        policy.uses_lighting = false;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
         policy.port_status = ShaderPortStatus::Inferred;
+        break;
+    case 87:
+        policy.shader_family = LegacyShaderFamily::TerrainDiffuseMapOnly;
+        policy.source_file = "TerrainDiffuse.fx";
+        policy.source_technique = "Technique_TerrainDiffuseMap_Only";
+        policy.uses_lighting = true;
+        policy.uses_fog = false;
+        policy.uses_specular = false;
+        policy.uses_reflection = false;
+        policy.alpha_semantic = ShaderAlphaSemantic::OutputAlpha;
+        policy.port_status = ShaderPortStatus::Verified;
         break;
     case 91:
         policy.shader_family = LegacyShaderFamily::OceanDistortUnlit;
@@ -1213,6 +1568,12 @@ LuShaderPolicy shaderPolicyFromInfo(const LuShaderInfo& shader) {
         break;
     default:
         break;
+    }
+
+    if (policy.source_file == "BasicShaders.fx") {
+        // BasicShaders.fx contains no fog calculation in any recovered object
+        // technique. Fogless behavior is source-authored, not a label guess.
+        policy.uses_fog = false;
     }
 
     if (policy.uses_reflection && policy.reflection_map.empty()) {
