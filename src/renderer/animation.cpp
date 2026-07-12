@@ -83,10 +83,9 @@ Quat sampleRotation(const AnimationTransformTrack& track, float time, Quat fallb
         const float x = sampleFloat(track.euler_x_keys, time, 0.0f);
         const float y = sampleFloat(track.euler_y_keys, time, 0.0f);
         const float z = sampleFloat(track.euler_z_keys, time, 0.0f);
-        const Quat stored = axisAngle(x, {1.0f, 0.0f, 0.0f}) *
-                            axisAngle(y, {0.0f, 1.0f, 0.0f}) *
-                            axisAngle(z, {0.0f, 0.0f, 1.0f});
-        return {-stored.x, -stored.y, -stored.z, stored.w};
+        return axisAngle(x, {1.0f, 0.0f, 0.0f}) *
+               axisAngle(y, {0.0f, 1.0f, 0.0f}) *
+               axisAngle(z, {0.0f, 0.0f, 1.0f});
     }
     return fallback;
 }

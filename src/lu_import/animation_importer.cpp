@@ -70,12 +70,13 @@ AnimationTransformTrack transformTrackFromInterpolator(
         interpolator->translation.y,
         interpolator->translation.z
     };
-    // KF quaternion vectors are conjugated relative to the active convention
-    // produced by the NIF matrix-to-quaternion scene extraction.
+    // NIF bind matrices and KF quaternions use the same active-rotation
+    // convention. Keep quaternion components native so child translations
+    // compose around the authored joint axes.
     track.default_transform.rotation = {
-        -interpolator->rotation.x,
-        -interpolator->rotation.y,
-        -interpolator->rotation.z,
+        interpolator->rotation.x,
+        interpolator->rotation.y,
+        interpolator->rotation.z,
         interpolator->rotation.w
     };
     track.default_transform.scale = interpolator->scale;
@@ -89,7 +90,7 @@ AnimationTransformTrack transformTrackFromInterpolator(
     for (const auto& key : data->rotation_keys) {
         track.rotation_keys.push_back({
             key.time,
-            {-key.value.x, -key.value.y, -key.value.z, key.value.w}
+            {key.value.x, key.value.y, key.value.z, key.value.w}
         });
     }
     auto copy_float_keys = [](const auto& source, auto& destination) {

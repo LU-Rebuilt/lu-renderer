@@ -1602,6 +1602,32 @@ int main() {
     expectNear(half_pose.node_world_matrices[1].m[12], 2.0f,
         "animation pose evaluates and composes a child translation track");
 
+    RenderWorld euler_world;
+    SkeletonNode euler_root;
+    euler_root.block_index = 10;
+    euler_root.name = "euler_root";
+    SkeletonNode euler_child;
+    euler_child.block_index = 11;
+    euler_child.parent_block = 10;
+    euler_child.name = "euler_child";
+    euler_child.bind_local.translation = {0.0f, 1.0f, 0.0f};
+    euler_world.skeleton_nodes = {euler_root, euler_child};
+    AnimationClip euler_clip;
+    euler_clip.stop_time = 1.0f;
+    AnimationControlledBlock euler_track;
+    euler_track.node_name = "euler_root";
+    euler_track.transform_track.present = true;
+    euler_track.transform_track.euler_x_keys = {
+        {0.0f, 1.57079632679f}
+    };
+    euler_clip.controlled_blocks.push_back(euler_track);
+    euler_world.animation.clips.push_back(euler_clip);
+    const AnimationPose euler_pose = evaluateAnimationPose(euler_world, 0, 0.0f);
+    expectNear(euler_pose.node_world_matrices[1].m[13], 0.0f,
+        "Euler animation rotates a child off its original Y axis");
+    expectNear(euler_pose.node_world_matrices[1].m[14], 1.0f,
+        "Euler animation uses the same active rotation convention as NIF/KF quaternions");
+
     const NodeTransform inverse_fixture{{2.0f, -3.0f, 4.0f}, normalize(Quat{0.2f, -0.3f, 0.1f, 0.9f}), 1.5f};
     const Mat4 fixture_matrix = transform_matrix(
         inverse_fixture.translation, inverse_fixture.rotation, inverse_fixture.scale);

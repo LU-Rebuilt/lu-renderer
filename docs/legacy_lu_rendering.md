@@ -180,8 +180,9 @@ direct client asset, `mesh/env/env_nim_pa_spacerock.nif`, has no
 Runtime animation imports KFM/KF transform tracks, evaluates linear and
 quadratic translation plus quaternion, Euler, and scale channels, and builds
 the 64-matrix skin palette from animated bone world transforms and NIF bind
-transforms. LU's KF quaternion convention is conjugated into the renderer's NIF
-convention at import. Hardware weights stored in `NiSkinPartition` are resolved
+transforms. NIF bind matrices and KF quaternions retain LU's shared active-
+rotation convention; transposing/conjugating either side breaks articulated
+child transforms. Hardware weights stored in `NiSkinPartition` are resolved
 through each partition's vertex map and local bone table. KFM import also loads
 its referenced model automatically in the NIF viewer. The full client audit
 finds 1,559 skinned render meshes, a maximum palette size of 50 bones, and
